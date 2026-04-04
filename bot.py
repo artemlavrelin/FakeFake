@@ -67,13 +67,18 @@ def run_webhook() -> None:
 
     app = web.Application()
 
-    # фиксированный путь
+    # webhook path строго с токеном
+    webhook_path = f"/webhook/{BOT_TOKEN}"
+
     SimpleRequestHandler(
         dispatcher=dp,
         bot=bot,
-    ).register(app, path="/webhook")
+    ).register(app, path=webhook_path)
+
+    setup_application(app, dp, bot=bot)
 
     logger.info("Webhook server: %s:%s", WEBAPP_HOST, WEBAPP_PORT)
+    logger.info("Webhook path: %s", webhook_path)
 
     web.run_app(app, host=WEBAPP_HOST, port=WEBAPP_PORT)
 
