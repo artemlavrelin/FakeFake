@@ -696,6 +696,34 @@ async def cb_cancel_fsm(call: CallbackQuery, state: FSMContext, session: AsyncSe
     await _show_admin_panel(call, session, edit=True)
 
 
+# ─── Утилита: отправка с retry при Flood Control ─────────────────────────────
+
+async def _send_with_retry(
+    bot: Bot,
+    chat_id: int,
+    text: str,
+    reply_markup=None,
+    max_retries: int = 3,
+) -> None:
+    """Send a message and retry on Flood Control with the suggested wait time."""
+    from aiogram.exceptions import TelegramRetryAfter
+    for attempt in range(max_retries):
+        try:
+            await bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=reply_markup)
+            return
+        except TelegramRetryAfter as e:
+            wait = min(e.retry_after, 60)   # cap at 60 s to avoid blocking forever
+            logger.warning(
+                "Flood control | chat=%s | retry_after=%ss | attempt=%s/%s",
+                chat_id, e.retry_after, attempt + 1, max_retries,
+            )
+            await asyncio.sleep(wait)
+        except Exception as e:
+            logger.warning("Send failed | chat=%s | %s", chat_id, e)
+            return
+    logger.error("Gave up sending to chat=%s after %s attempts", chat_id, max_retries)
+
+
 # ─── Уведомления группы ───────────────────────────────────────────────────────
 
 async def _notify_group_new_contest(bot: Bot, contest) -> None:
@@ -711,10 +739,16 @@ async def _notify_group_new_contest(bot: Bot, contest) -> None:
     try:
         kb = group_contest_keyboard(BOT_USERNAME, contest.id) if BOT_USERNAME else None
         msg = await bot.send_message(GROUP_ID, text, parse_mode="HTML", reply_markup=kb)
-        await bot.pin_chat_message(GROUP_ID, msg.message_id, disable_notification=True)
         logger.info("Group notified | contest #%s", contest.id)
     except Exception as e:
-        logger.warning("Group notify failed | %s", e)
+        logger.warning("Group notify send failed | %s", e)
+        return
+
+    # Pin separately — bot may lack pin rights, that's fine
+    try:
+        await bot.pin_chat_message(GROUP_ID, msg.message_id, disable_notification=True)
+    except Exception as e:
+        logger.info("Could not pin group message (no pin rights) | %s", e)
 
 
 async def _notify_group_draw(bot: Bot, contest_id: int, title: str, winners_lines: list[str]) -> None:
@@ -726,11 +760,8 @@ async def _notify_group_draw(bot: Bot, contest_id: int, title: str, winners_line
         f"📌 {title}\n\n"
         f"🏆 <b>Победители:</b>\n{block}"
     )
-    try:
-        kb = group_draw_keyboard(BOT_USERNAME) if BOT_USERNAME else None
-        await bot.send_message(GROUP_ID, text, parse_mode="HTML", reply_markup=kb)
-    except Exception as e:
-        logger.warning("Group draw notify failed | %s", e)
+    kb = group_draw_keyboard(BOT_USERNAME) if BOT_USERNAME else None
+    await _send_with_retry(bot, GROUP_ID, text, kb)
 
 
 async def _notify_participants(

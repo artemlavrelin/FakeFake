@@ -41,7 +41,10 @@ _MENU_TEXT = "Выбери раздел:"
 # ─── /start ───────────────────────────────────────────────────────────────────
 
 @router.message(CommandStart())
-async def cmd_start(message: Message, session: AsyncSession) -> None:
+async def cmd_start(message: Message, session: AsyncSession, state: FSMContext) -> None:
+    # Always clear any active FSM — /start is a universal reset
+    await state.clear()
+
     await repository.get_or_create_user(
         session, message.from_user.id, message.from_user.username
     )
