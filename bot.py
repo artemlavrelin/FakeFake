@@ -74,8 +74,7 @@ def run_webhook() -> None:
 
     logger.info("Webhook server: %s:%s", WEBAPP_HOST, WEBAPP_PORT)
 
-    web.run_app(app, host=WEBAPP_HOST, port=WEB
-
+    web.run_app(app, host=WEBAPP_HOST, port=WEBAPP_PORT)
 
 async def run_polling() -> None:
     await init_db()
