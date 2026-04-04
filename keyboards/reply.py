@@ -1,21 +1,9 @@
-from aiogram.types import KeyboardButton, ReplyKeyboardMarkup
+# Reply keyboard is not used in v4 (all UI is inline).
+# Kept for compatibility; main_keyboard() is only called from keyboards/__init__.py.
 
-# ─── User keyboard ─────────────────────────────────────────────────────────────
-
-def main_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="🎯 Участвовать")],
-            [KeyboardButton(text="🏆 Текущий конкурс")],
-            [KeyboardButton(text="📋 Результаты")],
-        ],
-        resize_keyboard=True,
-        persistent=True,
-    )
+from aiogram.types import ReplyKeyboardRemove
 
 
-def cancel_keyboard() -> ReplyKeyboardMarkup:
-    return ReplyKeyboardMarkup(
-        keyboard=[[KeyboardButton(text="❌ Отмена")]],
-        resize_keyboard=True,
-    )
+def main_keyboard() -> ReplyKeyboardRemove:
+    """Remove any lingering reply keyboard when switching to inline UI."""
+    return ReplyKeyboardRemove()
