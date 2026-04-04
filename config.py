@@ -15,16 +15,8 @@ REDIS_URL: str = os.getenv("REDIS_URL", "")
 _raw_group = os.getenv("GROUP_ID", "0")
 GROUP_ID: int = int(_raw_group) if _raw_group.lstrip("-").isdigit() else 0
 
-# Moderator group — receives bonus draw results
-_raw_moder = os.getenv("MODER_GROUP_ID", "-4843909295")
-MODER_GROUP_ID: int = int(_raw_moder) if _raw_moder.lstrip("-").isdigit() else -4843909295
-
-# Bot username without @ — used for deep links
+# Bot username without @ — used for deep links in group messages
 BOT_USERNAME: str = os.getenv("BOT_USERNAME", "")
-
-# Report channel link
-REPORT_CHANNEL_URL: str = "https://t.me/mutedcommunication"
-REPORT_CHANNEL_TITLE: str = "🔕 MUTED"
 
 # Webhook
 WEBHOOK_HOST: str = os.getenv("WEBHOOK_HOST", "")
@@ -34,10 +26,10 @@ WEBAPP_PORT: int = int(os.getenv("PORT", "8080"))
 WEBAPP_HOST: str = "0.0.0.0"
 USE_WEBHOOK: bool = bool(WEBHOOK_HOST)
 
-# Static ATM intro text (can be overridden in env)
-ATM_INTRO: str = os.getenv(
-    "ATM_INTRO",
-    "Сохраните ваши платёжные данные для получения выигрышей.",
+# Static ATM screen text (edit directly in code or via env)
+ATM_TEXT: str = os.getenv(
+    "ATM_TEXT",
+    "Информационный раздел\n\nЗдесь может отображаться описание, правила или служебная информация.",
 )
 
 if not BOT_TOKEN:

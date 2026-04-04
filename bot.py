@@ -13,7 +13,6 @@ from config import BOT_TOKEN, REDIS_URL, USE_WEBHOOK, WEBAPP_HOST, WEBAPP_PORT, 
 from database import init_db
 from handlers import admin, user
 from middlewares.db import DbSessionMiddleware
-from middlewares.fsm_command_guard import FsmCommandGuardMiddleware
 from middlewares.private_only import PrivateChatOnlyMiddleware
 from middlewares.throttle import ThrottleMiddleware
 from utils.logger import get_logger, setup_logging
@@ -37,13 +36,10 @@ def build_dispatcher() -> Dispatcher:
     dp.message.middleware(PrivateChatOnlyMiddleware())
     dp.callback_query.middleware(PrivateChatOnlyMiddleware())
 
-    # 2. Clear FSM when user sends a command — prevents FSM catching /start etc.
-    dp.message.middleware(FsmCommandGuardMiddleware())
-
-    # 3. Throttle callback spam
+    # 2. Throttle callback spam
     dp.callback_query.middleware(ThrottleMiddleware())
 
-    # 4. DB session
+    # 3. DB session
     dp.message.middleware(DbSessionMiddleware())
     dp.callback_query.middleware(DbSessionMiddleware())
 
