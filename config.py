@@ -20,8 +20,8 @@ BOT_USERNAME: str = os.getenv("BOT_USERNAME", "")
 
 # Webhook
 WEBHOOK_HOST: str = os.getenv("WEBHOOK_HOST", "")
-WEBHOOK_PATH = f"/webhook/{BOT_TOKEN}"
-WEBHOOK_URL = f"{WEBHOOK_HOST}{WEBHOOK_PATH}" if WEBHOOK_HOST else ""
+WEBHOOK_PATH: str = f"/webhook/{BOT_TOKEN}"
+WEBHOOK_URL: str = f"{WEBHOOK_HOST}{WEBHOOK_PATH}" if WEBHOOK_HOST else ""
 WEBAPP_PORT: int = int(os.getenv("PORT", "8080"))
 WEBAPP_HOST: str = "0.0.0.0"
 USE_WEBHOOK: bool = bool(WEBHOOK_HOST)

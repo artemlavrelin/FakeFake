@@ -61,22 +61,12 @@ async def on_shutdown(bot: Bot) -> None:
 def run_webhook() -> None:
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = build_dispatcher()
-
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
-
     app = web.Application()
-
-    webhook_path = f"/webhook/{BOT_TOKEN}"
-
-    SimpleRequestHandler(
-        dispatcher=dp,
-        bot=bot,
-    ).register(app, path=webhook_path)
-
+    SimpleRequestHandler(dispatcher=dp, bot=bot).register(app, path=WEBHOOK_PATH)
+    setup_application(app, dp, bot=bot)
     logger.info("Webhook server: %s:%s", WEBAPP_HOST, WEBAPP_PORT)
-    logger.info("Webhook path: %s", webhook_path)
-
     web.run_app(app, host=WEBAPP_HOST, port=WEBAPP_PORT)
 
 
