@@ -1,45 +1,23 @@
-# 🏆 ContestBot — Telegram-бот для конкурсов
+# 🏆 ContestBot v2 — Telegram-бот для конкурсов
 
-Telegram-бот для закрытого комьюнити с системой конкурсов и розыгрышей.
+Telegram-бот с системой конкурсов и розыгрышей для закрытого комьюнити.
+
+## ✨ Что нового в v2
+- **Inline-кнопки** — навигация без reply-клавиатуры, clean UI
+- **Уведомления участников** после `/draw` — победители получают поздравление, остальные — результаты
+- **Redis FSM** — состояния пережигают перезапуск бота (автофоллбэк на MemoryStorage)
+- **Webhook-режим** — для Railway (Production); polling — для локальной разработки
+  - Режим выбирается автоматически по наличию `WEBHOOK_HOST`
 
 ---
 
-## ⚡ Быстрый старт (локально)
+## ⚡ Быстрый старт (локально, polling)
 
-### 1. Клонируй и перейди в папку
 ```bash
-cd contest_bot
-```
-
-### 2. Создай виртуальное окружение
-```bash
-python -m venv .venv
-source .venv/bin/activate   # Linux/macOS
-# или
-.venv\Scripts\activate      # Windows
-```
-
-### 3. Установи зависимости
-```bash
+cd contest_bot_v2
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-```
-
-### 4. Создай `.env` из примера
-```bash
-cp .env.example .env
-```
-
-Отредактируй `.env`:
-```env
-BOT_TOKEN=your_token_here
-ADMIN_IDS=123456789        # твой Telegram ID
-DATABASE_URL=sqlite+aiosqlite:///./contest.db
-```
-
-> 💡 Узнать свой Telegram ID: напиши @userinfobot
-
-### 5. Запусти бота
-```bash
+cp .env.example .env   # заполни BOT_TOKEN и ADMIN_IDS
 python bot.py
 ```
 
@@ -47,96 +25,90 @@ python bot.py
 
 ## 🚀 Деплой на Railway
 
-### Шаг 1 — Создай проект на Railway
-1. Зайди на [railway.app](https://railway.app)
-2. New Project → Deploy from GitHub repo (или пустой проект + папка через CLI)
+### Шаг 1 — Создай проект и подключи репозиторий
+Railway → New Project → GitHub repo
 
-### Шаг 2 — Добавь PostgreSQL
-1. В проекте: **+ New** → **Database** → **PostgreSQL**
-2. Railway автоматически создаст переменную `DATABASE_URL`
+### Шаг 2 — Добавь сервисы
+| Сервис | Зачем |
+|---|---|
+| **PostgreSQL** | База данных (Railway добавит `DATABASE_URL` сам) |
+| **Redis** | FSM-хранилище (Railway добавит `REDIS_URL` сам) |
 
-### Шаг 3 — Настрой переменные окружения
-В разделе **Variables** добавь:
+### Шаг 3 — Переменные окружения (Variables)
 ```
 BOT_TOKEN=your_bot_token_here
 ADMIN_IDS=123456789,987654321
+WEBHOOK_HOST=https://your-project.up.railway.app
 ```
-`DATABASE_URL` Railway добавит сам из PostgreSQL-сервиса.
+> `DATABASE_URL`, `REDIS_URL`, `PORT` — Railway добавит автоматически
 
-### Шаг 4 — Деплой
-Запушь код в репозиторий — Railway подхватит `railway.toml` и запустит бота.
+### Шаг 4 — Expose порт
+В настройках сервиса: **Settings → Networking → Public Networking → Generate Domain**
+Скопируй URL → вставь в `WEBHOOK_HOST`
+
+### Шаг 5 — Деплой
+Пуш в репозиторий → Railway запустит бота через `railway.toml`
 
 ---
 
-## 📁 Структура проекта
+## 📁 Структура
 
 ```
-contest_bot/
-├── bot.py                  # Точка входа, запуск Dispatcher
-├── config.py               # Конфигурация из .env
+contest_bot_v2/
+├── bot.py                  ← точка входа; polling или webhook — по WEBHOOK_HOST
+├── config.py               ← все настройки из .env
 ├── requirements.txt
-├── Procfile                # Для Railway
-├── railway.toml            # Настройки деплоя
-├── .env.example
-│
+├── Procfile / railway.toml
 ├── database/
-│   ├── __init__.py
-│   ├── engine.py           # Создание AsyncEngine и сессий
-│   ├── models.py           # SQLAlchemy ORM-модели
-│   └── repository.py       # Вся логика работы с БД
-│
+│   ├── models.py           ← ORM: Users, Contests, Participants, Winners
+│   ├── engine.py           ← AsyncEngine + init_db()
+│   └── repository.py       ← вся логика БД
 ├── handlers/
-│   ├── __init__.py
-│   ├── user.py             # Пользовательские команды (/start, кнопки)
-│   └── admin.py            # Админ-команды (/create_contest, /draw, ...)
-│
+│   ├── user.py             ← /start + inline callbacks (participate, results...)
+│   └── admin.py            ← /create_contest, /draw + уведомления, /ban, /unban
 ├── keyboards/
-│   ├── __init__.py
-│   └── reply.py            # ReplyKeyboard кнопки
-│
-├── middlewares/
-│   └── db.py               # Middleware: инъекция DB-сессии в хендлеры
-│
-└── states/
-    └── contest.py          # FSM-состояния для создания конкурса
+│   ├── inline.py           ← InlineKeyboard кнопки
+│   └── reply.py            ← ReplyKeyboard (cancel при FSM)
+├── middlewares/db.py       ← инъекция DB-сессии
+└── states/contest.py       ← FSM-состояния
 ```
 
 ---
 
 ## 🎮 Функционал
 
-### Пользователь
-| Действие | Описание |
+### Пользователь (inline-кнопки)
+| Кнопка | Описание |
 |---|---|
-| `/start` | Регистрация + главное меню |
-| 🎯 Участвовать | Участие в активном конкурсе |
-| 🏆 Текущий конкурс | Просмотр активного конкурса |
-| 📋 Результаты | История завершённых конкурсов |
+| 🎯 Участвовать | Preview конкурса → подтверждение → регистрация |
+| 🏆 Текущий конкурс | Название, приз, количество победителей и участников |
+| 📋 Результаты | История завершённых конкурсов с победителями |
 
-### Администратор
+### Администратор (команды)
 | Команда | Описание |
 |---|---|
-| `/create_contest` | Создать конкурс (3 шага: название → приз → кол-во победителей) |
-| `/draw` | Провести розыгрыш и закрыть конкурс |
+| `/create_contest` | FSM-диалог: название → приз → кол-во победителей |
+| `/draw` | Розыгрыш + уведомление всех участников |
 | `/ban <id>` | Заблокировать пользователя |
-| `/unban <id>` | Разблокировать пользователя |
+| `/unban <id>` | Разблокировать |
 | `/list_users` | Список всех пользователей |
 
 ---
 
-## 🗄️ База данных
+## 📬 Уведомления после `/draw`
 
-| Таблица | Описание |
-|---|---|
-| `users` | Зарегистрированные пользователи |
-| `contests` | Конкурсы (active / finished) |
-| `contest_participants` | Участники конкурсов |
-| `winners` | Победители |
+**Победители** получают:
+> 🎉 Поздравляем! Вы победили! + информация о призе
+
+**Остальные участники** получают:
+> 📋 Конкурс завершён + список победителей
+
+Рассылка с задержкой 50ms между сообщениями (лимит Telegram: ~30 msg/sec).
 
 ---
 
 ## 🔐 Безопасность
 - Администраторы определяются через `ADMIN_IDS` в `.env`
 - Повторное участие в одном конкурсе игнорируется
-- Заблокированные пользователи не могут участвовать
-- Новый конкурс нельзя создать, пока предыдущий активен
+- Забаненные пользователи не могут участвовать
+- Нельзя создать новый конкурс, пока активен предыдущий
