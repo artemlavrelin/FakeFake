@@ -13,6 +13,7 @@ from config import BOT_TOKEN, REDIS_URL, USE_WEBHOOK, WEBAPP_HOST, WEBAPP_PORT, 
 from database import init_db
 from handlers import admin, user
 from middlewares.db import DbSessionMiddleware
+from middlewares.fsm_command_guard import FsmCommandGuardMiddleware
 from middlewares.private_only import PrivateChatOnlyMiddleware
 from middlewares.throttle import ThrottleMiddleware
 from utils.logger import get_logger, setup_logging
@@ -32,15 +33,15 @@ def build_storage():
 def build_dispatcher() -> Dispatcher:
     dp = Dispatcher(storage=build_storage())
 
-    # 1. Drop non-private chats first — cheapest check
-    dp.message.middleware(PrivateChatOnlyMiddleware())
+    # Middleware chain (order matters)
+    dp.message.middleware(PrivateChatOnlyMiddleware())     # 1. drop group messages
     dp.callback_query.middleware(PrivateChatOnlyMiddleware())
 
-    # 2. Throttle callback spam
-    dp.callback_query.middleware(ThrottleMiddleware())
+    dp.message.middleware(FsmCommandGuardMiddleware())     # 2. clear FSM on /commands
 
-    # 3. DB session
-    dp.message.middleware(DbSessionMiddleware())
+    dp.callback_query.middleware(ThrottleMiddleware())     # 3. anti-spam callbacks
+
+    dp.message.middleware(DbSessionMiddleware())           # 4. inject DB session
     dp.callback_query.middleware(DbSessionMiddleware())
 
     dp.include_router(admin.router)
@@ -60,7 +61,7 @@ async def on_shutdown(bot: Bot) -> None:
 
 def run_webhook() -> None:
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    dp = build_dispatcher()
+    dp  = build_dispatcher()
     dp.startup.register(on_startup)
     dp.shutdown.register(on_shutdown)
     app = web.Application()
@@ -74,7 +75,7 @@ async def run_polling() -> None:
     await init_db()
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     await bot.delete_webhook(drop_pending_updates=True)
-    dp = build_dispatcher()
+    dp  = build_dispatcher()
     logger.info("Polling started.")
     try:
         await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
@@ -83,7 +84,7 @@ async def run_polling() -> None:
 
 
 if __name__ == "__main__":
-    logger.info("ContestBot v4 | mode=%s", "WEBHOOK" if USE_WEBHOOK else "POLLING")
+    logger.info("ContestBot v6 | mode=%s", "WEBHOOK" if USE_WEBHOOK else "POLLING")
     if USE_WEBHOOK:
         run_webhook()
     else:
