@@ -6,10 +6,21 @@ from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from database.models import Contest, ContestParticipant, User, Winner
+from database.models import Contest, ContestParticipant, PaymentData, User, Winner
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+# ─── User number ──────────────────────────────────────────────────────────────
+
+async def _generate_unique_number(session: AsyncSession) -> int:
+    used_r = await session.execute(
+        select(User.user_number).where(User.user_number.isnot(None))
+    )
+    used = set(used_r.scalars().all())
+    pool = list(set(range(1, 10000)) - used)
+    return random.choice(pool) if pool else random.randint(10000, 99999)
 
 
 # ─── Users ────────────────────────────────────────────────────────────────────
@@ -17,23 +28,36 @@ logger = get_logger(__name__)
 async def get_or_create_user(
     session: AsyncSession, telegram_id: int, username: Optional[str]
 ) -> User:
-    result = await session.execute(select(User).where(User.telegram_id == telegram_id))
+    result = await session.execute(
+        select(User).where(User.telegram_id == telegram_id)
+        .options(selectinload(User.payment))
+    )
     user = result.scalar_one_or_none()
     if not user:
-        user = User(telegram_id=telegram_id, username=username)
+        number = await _generate_unique_number(session)
+        user = User(telegram_id=telegram_id, username=username, user_number=number)
         session.add(user)
         await session.commit()
         await session.refresh(user)
-        logger.info("New user | telegram_id=%s | username=%s", telegram_id, username)
+        logger.info("New user | telegram_id=%s | username=%s | number=▫️%s", telegram_id, username, number)
     else:
+        changed = False
         if user.username != username:
             user.username = username
+            changed = True
+        if user.user_number is None:
+            user.user_number = await _generate_unique_number(session)
+            changed = True
+        if changed:
             await session.commit()
     return user
 
 
 async def get_user(session: AsyncSession, telegram_id: int) -> Optional[User]:
-    result = await session.execute(select(User).where(User.telegram_id == telegram_id))
+    result = await session.execute(
+        select(User).where(User.telegram_id == telegram_id)
+        .options(selectinload(User.payment))
+    )
     return result.scalar_one_or_none()
 
 
@@ -48,12 +72,13 @@ async def set_ban(session: AsyncSession, telegram_id: int, banned: bool) -> Opti
 
 
 async def list_users(session: AsyncSession) -> list[User]:
-    result = await session.execute(select(User).order_by(User.created_at))
+    result = await session.execute(
+        select(User).options(selectinload(User.payment)).order_by(User.created_at)
+    )
     return list(result.scalars().all())
 
 
 async def get_all_user_ids(session: AsyncSession) -> list[int]:
-    """Return all non-banned telegram_ids for broadcast."""
     result = await session.execute(
         select(User.telegram_id).where(User.is_banned == False)
     )
@@ -63,66 +88,46 @@ async def get_all_user_ids(session: AsyncSession) -> list[int]:
 # ─── User statistics ──────────────────────────────────────────────────────────
 
 async def get_user_stats(session: AsyncSession, telegram_id: int) -> dict:
-    part_result = await session.execute(
+    part_r = await session.execute(
         select(func.count()).where(ContestParticipant.telegram_id == telegram_id)
     )
-    participations: int = part_result.scalar() or 0
-
-    wins_result = await session.execute(
+    wins_r = await session.execute(
         select(func.count()).where(Winner.telegram_id == telegram_id)
     )
-    wins: int = wins_result.scalar() or 0
-
-    # Sum prize_amount of won contests
-    prize_sum_result = await session.execute(
+    prize_r = await session.execute(
         select(func.coalesce(func.sum(Contest.prize_amount), 0))
         .join(Winner, Winner.contest_id == Contest.id)
         .where(Winner.telegram_id == telegram_id)
     )
-    prize_sum: float = float(prize_sum_result.scalar() or 0)
-
-    # Last win date
-    last_win_result = await session.execute(
+    last_win_r = await session.execute(
         select(Winner.created_at)
         .where(Winner.telegram_id == telegram_id)
         .order_by(Winner.created_at.desc())
         .limit(1)
     )
-    last_win = last_win_result.scalar_one_or_none()
-
     return {
-        "participations": participations,
-        "wins": wins,
-        "prize_sum": prize_sum,
-        "last_win": last_win,
+        "participations": part_r.scalar() or 0,
+        "wins": wins_r.scalar() or 0,
+        "prize_sum": float(prize_r.scalar() or 0),
+        "last_win": last_win_r.scalar_one_or_none(),
     }
 
 
 # ─── Public statistics ────────────────────────────────────────────────────────
 
 async def get_public_stats(session: AsyncSession) -> dict:
-    finished_result = await session.execute(
-        select(func.count()).where(Contest.status == "finished")
-    )
-    finished_count: int = finished_result.scalar() or 0
-
-    participants_result = await session.execute(select(func.count(ContestParticipant.id)))
-    total_participants: int = participants_result.scalar() or 0
-
-    winners_result = await session.execute(select(func.count(Winner.id)))
-    total_winners: int = winners_result.scalar() or 0
-
-    prize_sum_result = await session.execute(
+    finished_r = await session.execute(select(func.count()).where(Contest.status == "finished"))
+    parts_r    = await session.execute(select(func.count(ContestParticipant.id)))
+    wins_r     = await session.execute(select(func.count(Winner.id)))
+    prize_r    = await session.execute(
         select(func.coalesce(func.sum(Contest.prize_amount), 0))
         .where(Contest.status == "finished")
     )
-    total_prize_sum: float = float(prize_sum_result.scalar() or 0)
-
     return {
-        "finished_count": finished_count,
-        "total_participants": total_participants,
-        "total_winners": total_winners,
-        "total_prize_sum": total_prize_sum,
+        "finished_count":    finished_r.scalar() or 0,
+        "total_participants": parts_r.scalar() or 0,
+        "total_winners":     wins_r.scalar() or 0,
+        "total_prize_sum":   float(prize_r.scalar() or 0),
     }
 
 
@@ -131,32 +136,30 @@ async def get_public_stats(session: AsyncSession) -> dict:
 async def get_top_winners(session: AsyncSession, limit: int = 10) -> list[dict]:
     result = await session.execute(
         select(Winner.telegram_id, func.count(Winner.id).label("wins"))
-        .group_by(Winner.telegram_id)
-        .order_by(desc("wins"))
-        .limit(limit)
+        .group_by(Winner.telegram_id).order_by(desc("wins")).limit(limit)
     )
-    rows = result.all()
     out = []
-    for row in rows:
-        user_r = await session.execute(select(User).where(User.telegram_id == row.telegram_id))
-        user = user_r.scalar_one_or_none()
-        out.append({"telegram_id": row.telegram_id, "wins": row.wins, "username": user.username if user else None})
+    for row in result.all():
+        ur = await session.execute(select(User).where(User.telegram_id == row.telegram_id))
+        u = ur.scalar_one_or_none()
+        out.append({"telegram_id": row.telegram_id, "wins": row.wins,
+                    "username": u.username if u else None,
+                    "user_number": u.user_number if u else None})
     return out
 
 
 async def get_top_participants(session: AsyncSession, limit: int = 10) -> list[dict]:
     result = await session.execute(
         select(ContestParticipant.telegram_id, func.count(ContestParticipant.id).label("count"))
-        .group_by(ContestParticipant.telegram_id)
-        .order_by(desc("count"))
-        .limit(limit)
+        .group_by(ContestParticipant.telegram_id).order_by(desc("count")).limit(limit)
     )
-    rows = result.all()
     out = []
-    for row in rows:
-        user_r = await session.execute(select(User).where(User.telegram_id == row.telegram_id))
-        user = user_r.scalar_one_or_none()
-        out.append({"telegram_id": row.telegram_id, "count": row.count, "username": user.username if user else None})
+    for row in result.all():
+        ur = await session.execute(select(User).where(User.telegram_id == row.telegram_id))
+        u = ur.scalar_one_or_none()
+        out.append({"telegram_id": row.telegram_id, "count": row.count,
+                    "username": u.username if u else None,
+                    "user_number": u.user_number if u else None})
     return out
 
 
@@ -164,8 +167,7 @@ async def get_top_participants(session: AsyncSession, limit: int = 10) -> list[d
 
 async def get_active_contest(session: AsyncSession) -> Optional[Contest]:
     result = await session.execute(
-        select(Contest)
-        .where(Contest.status == "active")
+        select(Contest).where(Contest.status == "active")
         .options(selectinload(Contest.participants))
         .order_by(Contest.created_at.desc())
     )
@@ -173,39 +175,24 @@ async def get_active_contest(session: AsyncSession) -> Optional[Contest]:
 
 
 async def create_contest(
-    session: AsyncSession,
-    title: str,
-    prize_text: str,
-    prize_amount: float,
-    winners_count: int,
+    session: AsyncSession, title: str, prize_text: str,
+    prize_amount: float, winners_count: int,
 ) -> Contest:
-    contest = Contest(
-        title=title,
-        prize_text=prize_text,
-        prize_amount=prize_amount,
-        winners_count=winners_count,
-        status="active",
-    )
+    contest = Contest(title=title, prize_text=prize_text,
+                      prize_amount=prize_amount, winners_count=winners_count, status="active")
     session.add(contest)
     await session.commit()
     await session.refresh(contest)
-    logger.info(
-        "Contest created | id=%s | title=%r | prize=%s | winners=%s",
-        contest.id, title, prize_amount, winners_count,
-    )
+    logger.info("Contest created | id=%s | title=%r | prize=%s | winners=%s",
+                contest.id, title, prize_amount, winners_count)
     return contest
 
 
-async def edit_contest(
-    session: AsyncSession,
-    contest: Contest,
-    field: str,
-    value: str | float | int,
-) -> Contest:
+async def edit_contest(session: AsyncSession, contest: Contest, field: str, value) -> Contest:
     setattr(contest, field, value)
     await session.commit()
     await session.refresh(contest)
-    logger.info("Contest edited | id=%s | field=%s | value=%r", contest.id, field, value)
+    logger.info("Contest edited | id=%s | field=%s", contest.id, field)
     return contest
 
 
@@ -213,22 +200,20 @@ async def cancel_contest(session: AsyncSession, contest: Contest) -> Contest:
     contest.status = "cancelled"
     contest.finished_at = datetime.utcnow()
     await session.commit()
-    logger.info("Contest cancelled | id=%s | title=%r", contest.id, contest.title)
+    logger.info("Contest cancelled | id=%s", contest.id)
     return contest
 
 
 async def get_finished_contests(session: AsyncSession, limit: int = 10) -> list[Contest]:
     result = await session.execute(
-        select(Contest)
-        .where(Contest.status == "finished")
+        select(Contest).where(Contest.status == "finished")
         .options(selectinload(Contest.winners).selectinload(Winner.user))
-        .order_by(Contest.finished_at.desc())
-        .limit(limit)
+        .order_by(Contest.finished_at.desc()).limit(limit)
     )
     return list(result.scalars().all())
 
 
-# ─── Participants ──────────────────────────────────────────────────────────────
+# ─── Participants ─────────────────────────────────────────────────────────────
 
 async def is_participant(session: AsyncSession, contest_id: int, telegram_id: int) -> bool:
     result = await session.execute(
@@ -240,14 +225,12 @@ async def is_participant(session: AsyncSession, contest_id: int, telegram_id: in
     return result.scalar_one_or_none() is not None
 
 
-async def add_participant(
-    session: AsyncSession, contest_id: int, telegram_id: int
-) -> ContestParticipant:
+async def add_participant(session: AsyncSession, contest_id: int, telegram_id: int) -> ContestParticipant:
     p = ContestParticipant(contest_id=contest_id, telegram_id=telegram_id)
     session.add(p)
     await session.commit()
     await session.refresh(p)
-    logger.info("Joined contest | telegram_id=%s | contest_id=%s", telegram_id, contest_id)
+    logger.info("Joined | telegram_id=%s | contest_id=%s", telegram_id, contest_id)
     return p
 
 
@@ -258,9 +241,7 @@ async def get_participant_count(session: AsyncSession, contest_id: int) -> int:
     return result.scalar() or 0
 
 
-async def get_all_participants(
-    session: AsyncSession, contest_id: int
-) -> list[ContestParticipant]:
+async def get_all_participants(session: AsyncSession, contest_id: int) -> list[ContestParticipant]:
     result = await session.execute(
         select(ContestParticipant).where(ContestParticipant.contest_id == contest_id)
     )
@@ -269,25 +250,18 @@ async def get_all_participants(
 
 # ─── Draw ─────────────────────────────────────────────────────────────────────
 
-async def draw_winners(
-    session: AsyncSession, contest: Contest
-) -> tuple[list[Winner], int]:
+async def draw_winners(session: AsyncSession, contest: Contest) -> tuple[list[Winner], int]:
     participants = await get_all_participants(session, contest.id)
-    total = len(participants)
+    total  = len(participants)
+    actual = min(contest.winners_count, total)
 
-    actual_count = min(contest.winners_count, total)
-    if actual_count < contest.winners_count:
-        logger.warning(
-            "Fail-safe | contest_id=%s | requested=%s | available=%s",
-            contest.id, contest.winners_count, total,
-        )
+    if actual < contest.winners_count:
+        logger.warning("Fail-safe draw | contest_id=%s | requested=%s | available=%s",
+                       contest.id, contest.winners_count, total)
 
-    logger.info(
-        "Draw started | contest_id=%s | title=%r | participants=%s | winners=%s",
-        contest.id, contest.title, total, actual_count,
-    )
+    logger.info("Draw | contest_id=%s | participants=%s | winners=%s", contest.id, total, actual)
 
-    chosen = random.sample(participants, actual_count)
+    chosen = random.sample(participants, actual)
     for p in chosen:
         session.add(Winner(contest_id=contest.id, telegram_id=p.telegram_id))
 
@@ -296,14 +270,57 @@ async def draw_winners(
     await session.commit()
 
     result = await session.execute(
-        select(Winner)
-        .where(Winner.contest_id == contest.id)
-        .options(selectinload(Winner.user))
+        select(Winner).where(Winner.contest_id == contest.id)
+        .options(selectinload(Winner.user).selectinload(User.payment))
     )
     winners = list(result.scalars().all())
-
-    logger.info(
-        "Draw done | contest_id=%s | winners=%s",
-        contest.id, [w.telegram_id for w in winners],
-    )
+    logger.info("Winners | contest_id=%s | ids=%s", contest.id, [w.telegram_id for w in winners])
     return winners, total
+
+
+# ─── Payment data ─────────────────────────────────────────────────────────────
+
+async def get_payment_data(session: AsyncSession, telegram_id: int) -> Optional[PaymentData]:
+    result = await session.execute(
+        select(PaymentData).where(PaymentData.telegram_id == telegram_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def upsert_payment_data(
+    session: AsyncSession, telegram_id: int,
+    binance_id: Optional[str] = None, stake_user: Optional[str] = None,
+) -> PaymentData:
+    result = await session.execute(
+        select(PaymentData).where(PaymentData.telegram_id == telegram_id)
+    )
+    pd = result.scalar_one_or_none()
+    if not pd:
+        pd = PaymentData(telegram_id=telegram_id, binance_id=binance_id, stake_user=stake_user)
+        session.add(pd)
+    else:
+        if binance_id is not None:
+            pd.binance_id = binance_id
+        if stake_user is not None:
+            pd.stake_user = stake_user
+        pd.updated_at = datetime.utcnow()
+    await session.commit()
+    await session.refresh(pd)
+    logger.info("Payment saved | telegram_id=%s | binance=%s | stake=%s",
+                telegram_id, bool(pd.binance_id), bool(pd.stake_user))
+    return pd
+
+
+async def list_payment_data(
+    session: AsyncSession, page: int = 0, page_size: int = 15
+) -> tuple[list[PaymentData], int]:
+    import math
+    count_r = await session.execute(select(func.count(PaymentData.id)))
+    total   = count_r.scalar() or 0
+    result  = await session.execute(
+        select(PaymentData)
+        .options(selectinload(PaymentData.user))
+        .order_by(PaymentData.telegram_id)
+        .offset(page * page_size).limit(page_size)
+    )
+    return list(result.scalars().all()), total
