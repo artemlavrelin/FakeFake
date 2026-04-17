@@ -18,7 +18,13 @@ class Broadcast(StatesGroup):
     confirm         = State()
 
 
-class ATMInput(StatesGroup):
-    waiting_binance = State()
-    waiting_stake   = State()
-    confirm         = State()
+class StakeInput(StatesGroup):
+    waiting_value = State()
+
+
+class BinanceInput(StatesGroup):
+    waiting_value = State()
+
+
+class ReviewInput(StatesGroup):
+    waiting_content = State()
