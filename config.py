@@ -17,14 +17,15 @@ GROUP_ID: int = int(_raw_group) if _raw_group.lstrip("-").isdigit() else 0
 _raw_moder = os.getenv("MODER_GROUP_ID", "0")
 MODER_GROUP_ID: int = int(_raw_moder) if _raw_moder.lstrip("-").isdigit() else 0
 
-# Fixed bot username for group buttons
 BOT_USERNAME: str = os.getenv("BOT_USERNAME", "taskpaycryptoplaybot")
 BOT_LINK: str = f"https://t.me/{BOT_USERNAME}"
 
-# Report / reviews channel
 REPORT_CHANNEL_URL: str = "https://t.me/mutedcommunication"
 REPORT_CHANNEL_TITLE: str = "🔕 MUTED"
-REPORT_CHANNEL_ID: int = -1003734013071
+
+# Platform registration links
+STAKE_URL: str = os.getenv("STAKE_URL", "https://stake.com/?c=ref")
+BINANCE_URL: str = os.getenv("BINANCE_URL", "https://accounts.binance.com/register")
 
 # Webhook
 WEBHOOK_HOST: str = os.getenv("WEBHOOK_HOST", "")
@@ -34,10 +35,8 @@ WEBAPP_PORT: int = int(os.getenv("PORT", "8080"))
 WEBAPP_HOST: str = "0.0.0.0"
 USE_WEBHOOK: bool = bool(WEBHOOK_HOST)
 
-ATM_INTRO: str = os.getenv(
-    "ATM_INTRO",
-    "Сохраните ваши платёжные данные для получения выигрышей.",
-)
+# Review cooldown in hours
+REVIEW_COOLDOWN_HOURS: int = int(os.getenv("REVIEW_COOLDOWN_HOURS", "12"))
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN is not set")
