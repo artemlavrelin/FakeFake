@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import ADMIN_IDS, BOT_LINK, GROUP_ID
 from database import repository
+from i18n import t
 from keyboards.inline import (
     admin_panel_keyboard,
     broadcast_confirm_keyboard,
@@ -49,7 +50,7 @@ async def _send_with_retry(bot: Bot, chat_id: int, text: str, reply_markup=None,
             return
         except TelegramRetryAfter as e:
             wait = min(e.retry_after, 60)
-            logger.warning("Flood control | chat=%s | wait=%ss | attempt=%s/%s", chat_id, e.retry_after, attempt + 1, max_tries)
+            logger.warning("Flood control | chat=%s | wait=%ss", chat_id, e.retry_after)
             await asyncio.sleep(wait)
         except Exception as e:
             logger.warning("Send failed | chat=%s | %s", chat_id, e)
@@ -57,7 +58,7 @@ async def _send_with_retry(bot: Bot, chat_id: int, text: str, reply_markup=None,
     logger.error("Gave up sending to chat=%s after %s attempts", chat_id, max_tries)
 
 
-# ─── /admin panel ─────────────────────────────────────────────────────────────
+# ─── /admin ───────────────────────────────────────────────────────────────────
 
 @router.message(Command("admin"))
 async def cmd_admin(message: Message, session: AsyncSession) -> None:
@@ -84,8 +85,7 @@ async def _show_panel(event, session: AsyncSession, edit: bool) -> None:
         text  = (
             f"🔧 <b>ПАНЕЛЬ АДМИНИСТРАТОРА</b>\n\n"
             f"🤹🏻 Активный конкурс: <b>#{contest.id}</b>\n"
-            f"📌 {contest.title}\n"
-            f"{bar}"
+            f"📌 {contest.title}\n{bar}"
         )
     else:
         text = "🔧 <b>ПАНЕЛЬ АДМИНИСТРАТОРА</b>\n\nАктивных конкурсов нет."
@@ -99,7 +99,7 @@ async def _show_panel(event, session: AsyncSession, edit: bool) -> None:
         await msg.answer(text, parse_mode="HTML", reply_markup=kb)
 
 
-# ─── Создать конкурс ──────────────────────────────────────────────────────────
+# ─── Create contest ───────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "admin:create")
 async def cb_create(call: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
@@ -111,9 +111,8 @@ async def cb_create(call: CallbackQuery, state: FSMContext, session: AsyncSessio
         return
     await state.set_state(CreateContest.waiting_title)
     await call.message.edit_text(
-        "📝 <b>Создание конкурса — шаг 1/4</b>\n\n"
-        "📌 Введите <b>описание конкурса</b>:",
-        parse_mode="HTML", reply_markup=cancel_keyboard(),
+        "📝 <b>Создание конкурса — шаг 1/4</b>\n\n📌 Введите <b>описание конкурса</b>:",
+        parse_mode="HTML", reply_markup=cancel_keyboard("ru"),
     )
     await call.answer()
 
@@ -125,10 +124,7 @@ async def fsm_title(message: Message, state: FSMContext) -> None:
         return
     await state.update_data(title=message.text.strip())
     await state.set_state(CreateContest.waiting_prize_text)
-    await message.answer(
-        "Шаг 2/4 — <b>Текст приза</b> (например: «10$ USDT»):",
-        parse_mode="HTML", reply_markup=cancel_keyboard(),
-    )
+    await message.answer("Шаг 2/4 — <b>Текст приза</b>:", parse_mode="HTML", reply_markup=cancel_keyboard("ru"))
 
 
 @router.message(CreateContest.waiting_prize_text)
@@ -139,9 +135,8 @@ async def fsm_prize_text(message: Message, state: FSMContext) -> None:
     await state.update_data(prize_text=message.text.strip())
     await state.set_state(CreateContest.waiting_prize_amount)
     await message.answer(
-        "Шаг 3/4 — <b>Сумма приза числом</b> (для статистики).\n"
-        "Если нет — введите <code>0</code>:",
-        parse_mode="HTML", reply_markup=cancel_keyboard(),
+        "Шаг 3/4 — <b>Сумма приза числом</b> (или <code>0</code>):",
+        parse_mode="HTML", reply_markup=cancel_keyboard("ru"),
     )
 
 
@@ -153,14 +148,11 @@ async def fsm_prize_amount(message: Message, state: FSMContext) -> None:
         if amount < 0:
             raise ValueError
     except ValueError:
-        await message.answer("⚠️ Введите число (например: 10 или 0):")
+        await message.answer("⚠️ Введите число:")
         return
     await state.update_data(prize_amount=amount)
     await state.set_state(CreateContest.waiting_winners_count)
-    await message.answer(
-        "Шаг 4/4 — <b>Количество победителей</b> (1–100):",
-        parse_mode="HTML", reply_markup=cancel_keyboard(),
-    )
+    await message.answer("Шаг 4/4 — <b>Количество победителей</b> (1–100):", parse_mode="HTML", reply_markup=cancel_keyboard("ru"))
 
 
 @router.message(CreateContest.waiting_winners_count)
@@ -171,22 +163,19 @@ async def fsm_winners_count(message: Message, state: FSMContext, session: AsyncS
         return
     data = await state.get_data()
     await state.clear()
-
     contest = await repository.create_contest(
         session, title=data["title"], prize_text=data["prize_text"],
         prize_amount=data["prize_amount"], winners_count=int(raw),
     )
     await message.answer(
         f"✅ <b>Конкурс #{contest.id} создан!</b>\n\n"
-        f"📌 {contest.title}\n"
-        f"💰 {contest.prize_text}\n"
-        f"🏆 Победителей: <b>{contest.winners_count}</b>",
+        f"📌 {contest.title}\n💰 {contest.prize_text}\n🏆 Победителей: <b>{contest.winners_count}</b>",
         parse_mode="HTML", reply_markup=admin_panel_keyboard(True),
     )
     await _group_new_contest(bot, contest)
 
 
-# ─── Редактировать ────────────────────────────────────────────────────────────
+# ─── Edit ─────────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "admin:edit")
 async def cb_edit(call: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
@@ -214,8 +203,8 @@ async def cb_edit_field(call: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(edit_field=field)
     await state.set_state(EditContest.waiting_value)
     await call.message.edit_text(
-        f"✏️ Введите новое <b>{EDIT_FIELD_LABELS.get(field, field)}</b>:",
-        parse_mode="HTML", reply_markup=cancel_keyboard(),
+        f"✏️ Новое <b>{EDIT_FIELD_LABELS.get(field, field)}</b>:",
+        parse_mode="HTML", reply_markup=cancel_keyboard("ru"),
     )
     await call.answer()
 
@@ -225,7 +214,6 @@ async def fsm_edit_value(message: Message, state: FSMContext, session: AsyncSess
     data  = await state.get_data()
     field = data.get("edit_field", "")
     raw   = (message.text or "").strip()
-
     if field == "prize_amount":
         try:
             value = float(raw.replace(",", "."))
@@ -239,7 +227,6 @@ async def fsm_edit_value(message: Message, state: FSMContext, session: AsyncSess
         value = int(raw)
     else:
         value = raw
-
     await state.clear()
     contest = await repository.get_active_contest(session)
     if not contest:
@@ -247,12 +234,12 @@ async def fsm_edit_value(message: Message, state: FSMContext, session: AsyncSess
         return
     await repository.edit_contest(session, contest, field, value)
     await message.answer(
-        f"✅ Поле «{EDIT_FIELD_LABELS.get(field, field)}» обновлено.",
+        f"✅ «{EDIT_FIELD_LABELS.get(field, field)}» обновлено.",
         parse_mode="HTML", reply_markup=admin_panel_keyboard(True),
     )
 
 
-# ─── Отменить конкурс ─────────────────────────────────────────────────────────
+# ─── Cancel contest ───────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "admin:cancel_contest")
 async def cb_cancel_contest(call: CallbackQuery, session: AsyncSession) -> None:
@@ -261,10 +248,10 @@ async def cb_cancel_contest(call: CallbackQuery, session: AsyncSession) -> None:
         return
     contest = await repository.get_active_contest(session)
     if not contest:
-        await call.answer("Нет активного конкурса.", show_alert=True)
+        await call.answer("Нет конкурса.", show_alert=True)
         return
     await call.message.edit_text(
-        f"🚫 <b>Отменить конкурс #{contest.id}?</b>\n\n📌 {contest.title}\n\nДействие необратимо.",
+        f"🚫 <b>Отменить #{contest.id}?</b>\n\n📌 {contest.title}",
         parse_mode="HTML", reply_markup=cancel_contest_confirm_keyboard(),
     )
     await call.answer()
@@ -287,7 +274,7 @@ async def cb_cancel_yes(call: CallbackQuery, session: AsyncSession) -> None:
     await call.answer()
 
 
-# ─── Розыгрыш ─────────────────────────────────────────────────────────────────
+# ─── Draw ─────────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "admin:draw")
 async def cb_draw(call: CallbackQuery, session: AsyncSession, bot: Bot) -> None:
@@ -314,13 +301,13 @@ async def _run_draw(msg: Message, session: AsyncSession, bot: Bot, edit: bool) -
 
     count = await repository.get_participant_count(session, contest.id)
     if count == 0:
-        text = f"⚠️ В конкурсе <b>#{contest.id}</b> нет участников."
+        text = f"⚠️ Нет участников в <b>#{contest.id}</b>."
         await (msg.edit_text(text, parse_mode="HTML") if edit else msg.answer(text, parse_mode="HTML"))
         return
 
     winners, total = await repository.draw_winners(session, contest)
-    winner_ids     = {w.telegram_id for w in winners}
-    winners_lines  = [
+    winner_ids    = {w.telegram_id for w in winners}
+    winners_lines = [
         format_winner(w.telegram_id, w.user.username if w.user else None, i + 1)
         for i, w in enumerate(winners)
     ]
@@ -329,8 +316,7 @@ async def _run_draw(msg: Message, session: AsyncSession, bot: Bot, edit: bool) -
     result_text = (
         f"🎊 <b>Розыгрыш завершён!</b>\n\n"
         f"🤹🏻 Конкурс: <b>#{contest.id}</b>\n"
-        f"📌 {contest.title}\n"
-        f"💰 {contest.prize_text}\n"
+        f"📌 {contest.title}\n💰 {contest.prize_text}\n"
         f"👥 Участников: <b>{total}</b>  📅 {finished}\n\n"
         f"🏆 <b>Победители ({len(winners)}):</b>\n" + "\n".join(winners_lines)
     )
@@ -341,12 +327,14 @@ async def _run_draw(msg: Message, session: AsyncSession, bot: Bot, edit: bool) -
         await msg.answer(result_text, parse_mode="HTML")
 
     all_parts = await repository.get_all_participants(session, contest.id)
-    await _notify_participants(bot, [p.telegram_id for p in all_parts],
-                               winner_ids, contest.title, contest.prize_text, winners_lines)
+    await _notify_participants(
+        bot, session, [p.telegram_id for p in all_parts],
+        winner_ids, contest.title, contest.prize_text, winners_lines,
+    )
     await _group_draw(bot, contest.id, contest.title, winners_lines)
 
 
-# ─── Рассылка ─────────────────────────────────────────────────────────────────
+# ─── Broadcast ────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "admin:broadcast")
 async def cb_broadcast(call: CallbackQuery, state: FSMContext) -> None:
@@ -355,8 +343,8 @@ async def cb_broadcast(call: CallbackQuery, state: FSMContext) -> None:
         return
     await state.set_state(Broadcast.waiting_message)
     await call.message.edit_text(
-        "📣 <b>Рассылка</b>\n\nВведите текст сообщения:",
-        parse_mode="HTML", reply_markup=cancel_keyboard(),
+        "📣 <b>Рассылка</b>\n\nВведите текст:",
+        parse_mode="HTML", reply_markup=cancel_keyboard("ru"),
     )
     await call.answer()
 
@@ -395,12 +383,12 @@ async def cb_broadcast_send(call: CallbackQuery, state: FSMContext, session: Asy
         await asyncio.sleep(0.05)
     logger.info("Broadcast | sent=%s | failed=%s", sent, failed)
     await call.message.answer(
-        f"✅ <b>Рассылка завершена</b>\n📤 {sent}  ❌ {failed}",
+        f"✅ Рассылка завершена\n📤 {sent}  ❌ {failed}",
         parse_mode="HTML", reply_markup=admin_panel_keyboard(False),
     )
 
 
-# ─── Пользователи ─────────────────────────────────────────────────────────────
+# ─── Users ────────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "admin:users")
 async def cb_users(call: CallbackQuery, session: AsyncSession) -> None:
@@ -416,10 +404,11 @@ async def cb_users(call: CallbackQuery, session: AsyncSession) -> None:
     for u in users:
         name = f"@{u.username}" if u.username else "—"
         num  = f"▫️{u.user_number}" if u.user_number else ""
+        flag = "🇷🇺" if u.lang == "ru" else "🇬🇧" if u.lang == "en" else "❓"
         s    = "🚫" if u.is_banned else "✅"
-        lines.append(f"{s} <code>{u.telegram_id}</code> {name} {num}")
+        lines.append(f"{s} <code>{u.telegram_id}</code> {name} {num} {flag}")
     for i in range(0, len(lines), 50):
-        await call.message.answer("\n".join(lines[i:i+50]), parse_mode="HTML")
+        await call.message.answer("\n".join(lines[i:i + 50]), parse_mode="HTML")
     await call.answer()
 
 
@@ -449,7 +438,7 @@ async def cmd_unban(message: Message, session: AsyncSession) -> None:
     await message.answer(f"✅ {name} разблокирован." if user else "❓ Не найден.", parse_mode="HTML")
 
 
-# ─── Платёжные данные ─────────────────────────────────────────────────────────
+# ─── Payments ─────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "admin:payments")
 async def cb_payments(call: CallbackQuery, session: AsyncSession) -> None:
@@ -474,22 +463,17 @@ async def _show_payments(msg: Message, session: AsyncSession, page: int, edit: b
     page_size = 15
     records, total = await repository.list_payment_data(session, page=page, page_size=page_size)
     total_pages    = max(1, math.ceil(total / page_size))
-
     if not records:
         text = "💳 <b>Платёжные данные</b>\n\nПока нет записей."
     else:
-        lines = [f"💳 <b>Платёжные данные</b> (стр. {page + 1}/{total_pages}, всего {total})\n"]
+        lines = [f"💳 <b>Платёжные данные</b> (стр. {page + 1}/{total_pages})\n"]
         for r in records:
             name    = f"@{r.user.username}" if r.user and r.user.username else "—"
             num     = f"▫️{r.user.user_number}" if r.user and r.user.user_number else ""
             binance = r.binance_id or "—"
             stake   = r.stake_user or "—"
-            lines.append(
-                f"• <code>{r.telegram_id}</code> {name} {num}\n"
-                f"  💛 {binance}  🎰 {stake}"
-            )
+            lines.append(f"• <code>{r.telegram_id}</code> {name} {num}\n  💛 {binance}  🎰 {stake}")
         text = "\n".join(lines)
-
     kb = payments_page_keyboard(page, total_pages)
     if edit:
         await msg.edit_text(text, parse_mode="HTML", reply_markup=kb)
@@ -509,17 +493,15 @@ async def cmd_payment_view(message: Message, session: AsyncSession) -> None:
     user = await repository.get_user(session, tid)
     pd   = await repository.get_payment_data(session, tid)
     if not user:
-        await message.answer(f"❓ Пользователь <code>{tid}</code> не найден.", parse_mode="HTML")
+        await message.answer(f"❓ <code>{tid}</code> не найден.", parse_mode="HTML")
         return
     name    = f"@{user.username}" if user.username else "—"
     num     = f"▫️{user.user_number}" if user.user_number else "—"
     binance = pd.binance_id if pd and pd.binance_id else "—"
     stake   = pd.stake_user if pd and pd.stake_user else "—"
     await message.answer(
-        f"💳 <b>Платёжные данные</b>\n\n"
-        f"👤 {name}  {num}\n🆔 <code>{tid}</code>\n\n"
-        f"💛 Binance ID: <code>{binance}</code>\n"
-        f"🎰 Stake username: <code>{stake}</code>",
+        f"💳 <b>Платёжные данные</b>\n\n👤 {name}  {num}\n🆔 <code>{tid}</code>\n\n"
+        f"💛 Binance ID: <code>{binance}</code>\n🎰 Stake username: <code>{stake}</code>",
         parse_mode="HTML",
     )
 
@@ -540,14 +522,13 @@ async def cmd_payment_set(message: Message, session: AsyncSession) -> None:
     stake_user = next((p.split("=", 1)[1] for p in parts[2:] if p.lower().startswith("stake=")),   None)
     pd = await repository.upsert_payment_data(session, tid, binance_id=binance_id, stake_user=stake_user)
     await message.answer(
-        f"✅ Данные обновлены для <code>{tid}</code>:\n"
-        f"💛 Binance: <code>{pd.binance_id or '—'}</code>\n"
+        f"✅ <code>{tid}</code>\n💛 Binance: <code>{pd.binance_id or '—'}</code>\n"
         f"🎰 Stake: <code>{pd.stake_user or '—'}</code>",
         parse_mode="HTML",
     )
 
 
-# ─── FSM cancel ───────────────────────────────────────────────────────────────
+# ─── FSM cancel (admin) ───────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "cancel_fsm")
 async def cb_cancel_fsm(call: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
@@ -564,8 +545,7 @@ async def _group_new_contest(bot: Bot, contest) -> None:
         f"🤹🏻 <b>Новый конкурс #{contest.id}!</b>\n\n"
         f"📌 {contest.title}\n\n"
         f"💰 Приз: <b>{contest.prize_text}</b>\n"
-        f"🏆 Победителей: <b>{contest.winners_count}</b>\n"
-        f"👥 Участников: <b>0</b>"
+        f"🏆 Победителей: <b>{contest.winners_count}</b>\n👥 Участников: <b>0</b>"
     )
     try:
         kb  = group_contest_keyboard(BOT_LINK, contest.id)
@@ -577,42 +557,36 @@ async def _group_new_contest(bot: Bot, contest) -> None:
     try:
         await bot.pin_chat_message(GROUP_ID, msg.message_id, disable_notification=True)
     except Exception as e:
-        logger.info("Pin skipped (no rights) | %s", e)
+        logger.info("Pin skipped | %s", e)
 
 
 async def _group_draw(bot: Bot, contest_id: int, title: str, winners_lines: list[str]) -> None:
     if not GROUP_ID:
         return
     block = "\n".join(winners_lines)
-    text  = (
-        f"🎊 <b>Конкурс #{contest_id} завершён!</b>\n\n"
-        f"📌 {title}\n\n"
-        f"🏆 <b>Победители:</b>\n{block}"
-    )
+    text  = f"🎊 <b>Конкурс #{contest_id} завершён!</b>\n\n📌 {title}\n\n🏆 <b>Победители:</b>\n{block}"
     await _send_with_retry(bot, GROUP_ID, text, group_draw_keyboard(BOT_LINK))
 
 
 async def _notify_participants(
-    bot: Bot, participant_ids: list[int], winner_ids: set[int],
+    bot: Bot, session: AsyncSession,
+    participant_ids: list[int], winner_ids: set[int],
     contest_title: str, prize_text: str, winners_lines: list[str],
 ) -> None:
-    block       = "\n".join(winners_lines)
-    winner_msg  = (
-        f"🎉 <b>Поздравляем — вы победили!</b>\n\n"
-        f"📌 {contest_title}\n💰 Приз: {prize_text}\n\n"
-        "Свяжитесь с администратором для получения приза."
-    )
-    other_msg = (
-        f"🤹🏻 <b>Конкурс завершён</b>\n\n📌 {contest_title}\n\n"
-        f"🏆 <b>Победители:</b>\n{block}\n\nСпасибо за участие! 🍀"
-    )
+    block = "\n".join(winners_lines)
     sent = failed = 0
     for uid in participant_ids:
         try:
-            await bot.send_message(uid, winner_msg if uid in winner_ids else other_msg, parse_mode="HTML")
+            user = await repository.get_user(session, uid)
+            lang = (user.lang or "ru") if user else "ru"
+            if uid in winner_ids:
+                text = t(lang, "notify_winner", title=contest_title, prize=prize_text)
+            else:
+                text = t(lang, "notify_other", title=contest_title, winners=block)
+            await bot.send_message(uid, text, parse_mode="HTML")
             sent += 1
         except Exception as e:
             logger.warning("Notify fail | %s | %s", uid, e)
             failed += 1
         await asyncio.sleep(0.05)
-    logger.info("Participant notifications | sent=%s | failed=%s", sent, failed)
+    logger.info("Notifications | sent=%s | failed=%s", sent, failed)
