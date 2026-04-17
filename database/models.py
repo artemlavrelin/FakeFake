@@ -13,12 +13,14 @@ class Base(DeclarativeBase):
 class User(Base):
     __tablename__ = "users"
 
-    id          = Column(Integer, primary_key=True)
-    telegram_id = Column(BigInteger, unique=True, nullable=False, index=True)
-    username    = Column(String(255), nullable=True)
-    user_number = Column(Integer, unique=True, nullable=True)   # ▫️1–9999
-    is_banned   = Column(Boolean, default=False, nullable=False)
-    created_at  = Column(DateTime, default=datetime.utcnow, server_default=func.now())
+    id             = Column(Integer, primary_key=True)
+    telegram_id    = Column(BigInteger, unique=True, nullable=False, index=True)
+    username       = Column(String(255), nullable=True)
+    user_number    = Column(Integer, unique=True, nullable=True)
+    lang           = Column(String(5), default="ru", nullable=False)   # "ru" | "en"
+    is_banned      = Column(Boolean, default=False, nullable=False)
+    last_review_at = Column(DateTime, nullable=True)                   # cooldown tracking
+    created_at     = Column(DateTime, default=datetime.utcnow, server_default=func.now())
 
     payment = relationship("PaymentData", back_populates="user", uselist=False)
 
@@ -31,7 +33,7 @@ class Contest(Base):
     prize_text    = Column(String(512), nullable=False)
     prize_amount  = Column(Float, nullable=True, default=0)
     winners_count = Column(Integer, nullable=False, default=1)
-    status        = Column(String(20), default="active", nullable=False)  # active|finished|cancelled
+    status        = Column(String(20), default="active", nullable=False)
     created_at    = Column(DateTime, default=datetime.utcnow, server_default=func.now())
     finished_at   = Column(DateTime, nullable=True)
 
@@ -70,13 +72,12 @@ class Winner(Base):
 
 
 class PaymentData(Base):
-    """Binance ID + Stake username per user. Edit only via admin commands."""
     __tablename__ = "payment_data"
 
     id          = Column(Integer, primary_key=True)
     telegram_id = Column(BigInteger, ForeignKey("users.telegram_id"), unique=True, nullable=False)
     binance_id  = Column(String(256), nullable=True)
-    stake_user  = Column(String(256), nullable=True)    # Stake username
+    stake_user  = Column(String(256), nullable=True)
     updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     user = relationship("User", back_populates="payment")
