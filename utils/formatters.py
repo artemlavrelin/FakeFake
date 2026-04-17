@@ -1,4 +1,5 @@
 from datetime import datetime
+from i18n import t
 
 
 def format_winner(telegram_id: int, username: str | None, index: int) -> str:
@@ -12,9 +13,8 @@ def stats_bar(
     time_str: str, participants: int, winners_count: int,
     prize_text: str, chance_pct: float,
 ) -> str:
-    prize  = prize_text[:20] if len(prize_text) > 20 else prize_text
-    chance = f"{chance_pct:.1f}%"
-    return f"⏳ {time_str}   👥 {participants}   🏆 {winners_count}   💰 {prize}   📊 {chance}"
+    prize = prize_text[:20] if len(prize_text) > 20 else prize_text
+    return f"⏳ {time_str}   👥 {participants}   🏆 {winners_count}   💰 {prize}   📊 {chance_pct:.1f}%"
 
 
 def calc_chance(winners_count: int, participants: int, is_participant: bool) -> float:
@@ -23,7 +23,7 @@ def calc_chance(winners_count: int, participants: int, is_participant: bool) -> 
     return min((winners_count / participants) * 100, 100.0)
 
 
-def format_personal_stats(stats: dict, user_number: int | None) -> str:
+def format_personal_stats(stats: dict, user_number: int | None, lang: str) -> str:
     participations = stats["participations"]
     wins           = stats["wins"]
     prize_sum      = stats["prize_sum"]
@@ -34,32 +34,33 @@ def format_personal_stats(stats: dict, user_number: int | None) -> str:
     prize_str    = f"${prize_sum:.0f}" if prize_sum > 0 else "—"
 
     lines = [
-        "👀 <b>МОЯ СТАТИСТИКА</b>",
+        t(lang, "stats_header"),
         f"<b>{num_str}</b>",
         "",
-        f"🎲 Участий: <b>{participations}</b>",
-        f"🔥 Побед: <b>{wins}</b>",
-        f"💵 Сумма выигрышей: <b>{prize_str}</b>",
-        f"🍷 Последняя победа: <b>{last_win_str}</b>",
+        t(lang, "stats_participations", n=participations),
+        t(lang, "stats_wins",           n=wins),
+        t(lang, "stats_prize_sum",      s=prize_str),
+        t(lang, "stats_last_win",       d=last_win_str),
     ]
     if wins == 0 and participations > 0:
-        lines.append("\nУдачи в следующий раз! 🍀")
+        lines.append(t(lang, "stats_no_wins"))
     elif wins == 1:
-        lines.append("\nВы побеждали 1× — отличный результат! 🌟")
+        lines.append(t(lang, "stats_won_once"))
     elif wins > 1:
-        lines.append(f"\nВы побеждали {wins}× — вы везунчик! 🌟")
+        lines.append(t(lang, "stats_won_many", n=wins))
     return "\n".join(lines)
 
 
-def format_public_stats(stats: dict) -> str:
+def format_public_stats(stats: dict, lang: str) -> str:
     prize_str = f"${stats['total_prize_sum']:.0f}" if stats["total_prize_sum"] > 0 else "—"
-    return (
-        "👥 <b>ОБЩАЯ СТАТИСТИКА</b>\n\n"
-        f"🤹🏻 Завершено конкурсов: <b>{stats['finished_count']}</b>\n"
-        f"👥 Всего участий: <b>{stats['total_participants']}</b>\n"
-        f"🏆 Победителей выбрано: <b>{stats['total_winners']}</b>\n"
-        f"💰 Сумма призов: <b>{prize_str}</b>"
-    )
+    return "\n".join([
+        t(lang, "public_stats_header"),
+        "",
+        t(lang, "public_finished",     n=stats["finished_count"]),
+        t(lang, "public_participants", n=stats["total_participants"]),
+        t(lang, "public_winners",      n=stats["total_winners"]),
+        t(lang, "public_prize_sum",    s=prize_str),
+    ])
 
 
 def _fmt_name(row: dict) -> str:
@@ -70,23 +71,23 @@ def _fmt_name(row: dict) -> str:
     return f"{s[:4]}****{num}"
 
 
-def format_top_winners(rows: list[dict]) -> str:
+def format_top_winners(rows: list[dict], lang: str) -> str:
     if not rows:
-        return "🏆 <b>ТОП ПОБЕДИТЕЛЕЙ</b>\n\nПока нет данных."
+        return t(lang, "top_winners_empty")
     medals = ["🥇", "🥈", "🥉"]
-    lines  = ["🏆 <b>ТОП ПОБЕДИТЕЛЕЙ</b>\n"]
+    lines  = [t(lang, "top_winners_header"), ""]
     for i, row in enumerate(rows):
         medal = medals[i] if i < 3 else f"{i + 1}."
-        lines.append(f"{medal} {_fmt_name(row)} — <b>{row['wins']}</b> побед")
+        lines.append(t(lang, "top_wins_row", medal=medal, name=_fmt_name(row), n=row["wins"]))
     return "\n".join(lines)
 
 
-def format_top_participants(rows: list[dict]) -> str:
+def format_top_participants(rows: list[dict], lang: str) -> str:
     if not rows:
-        return "👥 <b>ТОП УЧАСТНИКОВ</b>\n\nПока нет данных."
+        return t(lang, "top_parts_empty")
     medals = ["🥇", "🥈", "🥉"]
-    lines  = ["👥 <b>ТОП УЧАСТНИКОВ</b>\n"]
+    lines  = [t(lang, "top_parts_header"), ""]
     for i, row in enumerate(rows):
         medal = medals[i] if i < 3 else f"{i + 1}."
-        lines.append(f"{medal} {_fmt_name(row)} — <b>{row['count']}</b> участий")
+        lines.append(t(lang, "top_parts_row", medal=medal, name=_fmt_name(row), n=row["count"]))
     return "\n".join(lines)
