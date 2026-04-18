@@ -590,3 +590,20 @@ async def _notify_participants(
             failed += 1
         await asyncio.sleep(0.05)
     logger.info("Notifications | sent=%s | failed=%s", sent, failed)
+
+
+@router.message(Command("loot"))
+async def cmd_loot_ban(message: Message, session: AsyncSession) -> None:
+    """Permanently disable loot for a user."""
+    if not is_admin(message.from_user.id):
+        return
+    args = message.text.split()
+    if len(args) < 2 or not args[1].lstrip("-").isdigit():
+        await message.answer("📖 /loot <telegram_id>")
+        return
+    user = await repository.set_loot_ban(session, int(args[1]), True)
+    name = f"@{user.username}" if user and user.username else f"<code>{args[1]}</code>"
+    await message.answer(
+        f"🔒 Loot заблокирован для {name}." if user else "❓ Не найден.",
+        parse_mode="HTML",
+    )
