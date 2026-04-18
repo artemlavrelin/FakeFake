@@ -23,20 +23,28 @@ BOT_LINK: str = f"https://t.me/{BOT_USERNAME}"
 REPORT_CHANNEL_URL: str = "https://t.me/mutedcommunication"
 REPORT_CHANNEL_TITLE: str = "🔕 MUTED"
 
-# Platform registration links
 STAKE_URL: str = os.getenv("STAKE_URL", "https://stake.com/?c=ref")
 BINANCE_URL: str = os.getenv("BINANCE_URL", "https://accounts.binance.com/register")
+
+# Social links
+FACEBOOK_URL: str  = os.getenv("FACEBOOK_URL",  "https://facebook.com")
+TWITTER_URL: str   = os.getenv("TWITTER_URL",   "https://twitter.com")
+INSTAGRAM_URL: str = os.getenv("INSTAGRAM_URL", "https://instagram.com")
+THREADS_URL: str   = os.getenv("THREADS_URL",   "https://threads.net")
+
+# Greeting shown in /start
+BOT_GREETING: str = os.getenv("BOT_GREETING", "🃏 Bellamy Spake")
 
 # Webhook
 WEBHOOK_HOST: str = os.getenv("WEBHOOK_HOST", "")
 WEBHOOK_PATH: str = f"/webhook/{BOT_TOKEN}"
-WEBHOOK_URL: str = f"{WEBHOOK_HOST}{WEBHOOK_PATH}" if WEBHOOK_HOST else ""
-WEBAPP_PORT: int = int(os.getenv("PORT", "8080"))
-WEBAPP_HOST: str = "0.0.0.0"
+WEBHOOK_URL: str  = f"{WEBHOOK_HOST}{WEBHOOK_PATH}" if WEBHOOK_HOST else ""
+WEBAPP_PORT: int  = int(os.getenv("PORT", "8080"))
+WEBAPP_HOST: str  = "0.0.0.0"
 USE_WEBHOOK: bool = bool(WEBHOOK_HOST)
 
-# Review cooldown in hours
 REVIEW_COOLDOWN_HOURS: int = int(os.getenv("REVIEW_COOLDOWN_HOURS", "12"))
+LOOT_COOLDOWN_HOURS: int   = int(os.getenv("LOOT_COOLDOWN_HOURS", "24"))
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN is not set")

@@ -11,7 +11,7 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 
 from config import BOT_TOKEN, REDIS_URL, USE_WEBHOOK, WEBAPP_HOST, WEBAPP_PORT, WEBHOOK_PATH, WEBHOOK_URL
 from database import init_db
-from handlers import admin, user
+from handlers import admin, liketime, loot, social, user
 from middlewares.db import DbSessionMiddleware
 from middlewares.fsm_command_guard import FsmCommandGuardMiddleware
 from middlewares.private_only import PrivateChatOnlyMiddleware
@@ -34,18 +34,22 @@ def build_dispatcher() -> Dispatcher:
     dp = Dispatcher(storage=build_storage())
 
     # Middleware chain (order matters)
-    dp.message.middleware(PrivateChatOnlyMiddleware())     # 1. drop group messages
+    dp.message.middleware(PrivateChatOnlyMiddleware())       # 1. drop group messages (except group_join)
     dp.callback_query.middleware(PrivateChatOnlyMiddleware())
 
-    dp.message.middleware(FsmCommandGuardMiddleware())     # 2. clear FSM on /commands
+    dp.message.middleware(FsmCommandGuardMiddleware())       # 2. /start always resets FSM
 
-    dp.callback_query.middleware(ThrottleMiddleware())     # 3. anti-spam callbacks
+    dp.callback_query.middleware(ThrottleMiddleware())       # 3. anti-spam
 
-    dp.message.middleware(DbSessionMiddleware())           # 4. inject DB session
+    dp.message.middleware(DbSessionMiddleware())             # 4. DB session
     dp.callback_query.middleware(DbSessionMiddleware())
 
-    dp.include_router(admin.router)
+    # Register routers — user FIRST so cancel_fsm goes to user handler
     dp.include_router(user.router)
+    dp.include_router(loot.router)
+    dp.include_router(liketime.router)
+    dp.include_router(social.router)
+    dp.include_router(admin.router)
     return dp
 
 
@@ -81,10 +85,11 @@ async def run_polling() -> None:
         await dp.start_polling(bot, allowed_updates=["message", "callback_query"])
     finally:
         await bot.session.close()
+        logger.info("Bot stopped.")
 
 
 if __name__ == "__main__":
-    logger.info("ContestBot v6 | mode=%s", "WEBHOOK" if USE_WEBHOOK else "POLLING")
+    logger.info("ContestBot v8 | mode=%s", "WEBHOOK" if USE_WEBHOOK else "POLLING")
     if USE_WEBHOOK:
         run_webhook()
     else:
