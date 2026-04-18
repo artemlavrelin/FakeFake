@@ -14,7 +14,6 @@ REDIS_URL: str = os.getenv("REDIS_URL", "")
 _raw_group = os.getenv("GROUP_ID", "0")
 GROUP_ID: int = int(_raw_group) if _raw_group.lstrip("-").isdigit() else 0
 
-# Moderator group — receives reviews, loot, payment change notifications
 _raw_moder = os.getenv("MODER_GROUP_ID", "-1003654223457")
 MODER_GROUP_ID: int = int(_raw_moder) if _raw_moder.lstrip("-").isdigit() else 0
 
@@ -44,6 +43,11 @@ USE_WEBHOOK: bool = bool(WEBHOOK_HOST)
 REVIEW_COOLDOWN_HOURS: int        = int(os.getenv("REVIEW_COOLDOWN_HOURS", "12"))
 LOOT_COOLDOWN_HOURS: int          = int(os.getenv("LOOT_COOLDOWN_HOURS", "24"))
 PAYMENT_CHANGE_COOLDOWN_DAYS: int = int(os.getenv("PAYMENT_CHANGE_COOLDOWN_DAYS", "7"))
+
+# Slot system
+SLOT_SPINS_MIN: int = int(os.getenv("SLOT_SPINS_MIN", "69"))
+SLOT_SPINS_MAX: int = int(os.getenv("SLOT_SPINS_MAX", "250"))
+BUDAPEST_TZ: str    = "Europe/Budapest"
 
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN is not set")
