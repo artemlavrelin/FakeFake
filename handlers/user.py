@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import (
     BINANCE_URL, BOT_GREETING, MODER_GROUP_ID,
+    PAYMENT_CHANGE_COOLDOWN_DAYS,
     REPORT_CHANNEL_TITLE, REPORT_CHANNEL_URL,
     REVIEW_COOLDOWN_HOURS, STAKE_URL,
 )
@@ -21,7 +22,7 @@ from keyboards.inline import (
 from states.contest import BinanceInput, ReviewInput, StakeInput
 from utils.formatters import (
     calc_chance, format_personal_stats, format_public_stats,
-    format_top_participants, format_top_winners, format_winner, stats_bar,
+    format_top_participants, format_top_winners, stats_bar,
 )
 from utils.logger import get_logger
 from utils.time_utils import time_ago
@@ -33,6 +34,30 @@ router = Router()
 async def _lang(session: AsyncSession, telegram_id: int) -> str:
     user = await repository.get_user(session, telegram_id)
     return (user.lang or "ru") if user else "ru"
+
+
+async def _notify_payment_change(
+    bot: Bot,
+    lang: str,
+    user,
+    field_label: str,
+    new_value: str,
+) -> None:
+    """Send payment change notification to moderator group."""
+    if not MODER_GROUP_ID:
+        return
+    uname = user.username or "(нет username)"
+    num   = user.user_number or "—"
+    try:
+        await bot.send_message(
+            MODER_GROUP_ID,
+            t(lang, "payment_changed_moder",
+              username=uname, uid=user.telegram_id,
+              num=num, field=field_label, value=new_value),
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        logger.warning("Payment change notify failed | moder_group=%s | %s", MODER_GROUP_ID, e)
 
 
 # ─── /start ───────────────────────────────────────────────────────────────────
@@ -112,12 +137,11 @@ async def _show_raffle(event, session: AsyncSession, lang: str, edit: bool) -> N
     contest = await repository.get_active_contest(session)
 
     if not contest:
+        text = t(lang, "raffle_no_contest")
         if edit:
-            await msg.edit_text(t(lang, "raffle_no_contest"), parse_mode="HTML",
-                                reply_markup=back_to_menu_keyboard(lang))
+            await msg.edit_text(text, parse_mode="HTML", reply_markup=back_to_menu_keyboard(lang))
         else:
-            await msg.answer(t(lang, "raffle_no_contest"), parse_mode="HTML",
-                             reply_markup=back_to_menu_keyboard(lang))
+            await msg.answer(text, parse_mode="HTML", reply_markup=back_to_menu_keyboard(lang))
         if is_call:
             await event.answer()
         return
@@ -219,7 +243,7 @@ async def cb_group_join(call: CallbackQuery, session: AsyncSession) -> None:
     await call.answer(t(lang, "group_joined", n=count), show_alert=True)
 
 
-# ─── ⭐️ Выплаты / Отзывы (merged) ────────────────────────────────────────────
+# ─── ⭐️ Report + Reviews ──────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "report")
 async def cb_report(call: CallbackQuery, session: AsyncSession) -> None:
@@ -245,8 +269,7 @@ async def cb_review_start(call: CallbackQuery, state: FSMContext, session: Async
         return
     await state.set_state(ReviewInput.waiting_content)
     await call.message.edit_text(
-        t(lang, "review_prompt"),
-        parse_mode="HTML",
+        t(lang, "review_prompt"), parse_mode="HTML",
         reply_markup=cancel_keyboard(lang, back_cb="report"),
     )
     await call.answer()
@@ -276,7 +299,7 @@ async def fsm_review(message: Message, state: FSMContext, session: AsyncSession,
             elif message.text:
                 await bot.send_message(MODER_GROUP_ID, message.text)
         except Exception as e:
-            logger.warning("Review forward failed | %s", e)
+            logger.warning("Review forward failed | moder=%s | %s", MODER_GROUP_ID, e)
     await message.answer(t(lang, "review_sent"), parse_mode="HTML", reply_markup=back_to_menu_keyboard(lang))
 
 
@@ -289,8 +312,7 @@ async def cb_my_stats(call: CallbackQuery, session: AsyncSession) -> None:
     stats = await repository.get_user_stats(session, call.from_user.id)
     await call.message.edit_text(
         format_personal_stats(stats, user.user_number, lang),
-        parse_mode="HTML",
-        reply_markup=back_to_menu_keyboard(lang),
+        parse_mode="HTML", reply_markup=back_to_menu_keyboard(lang),
     )
     await call.answer()
 
@@ -328,7 +350,7 @@ async def cb_top_participants(call: CallbackQuery, session: AsyncSession) -> Non
     await call.answer()
 
 
-# ─── 🤞🏻 Stake ────────────────────────────────────────────────────────────────
+# ─── 🤞🏻 Stake — with weekly cooldown + mod notification ─────────────────────
 
 @router.callback_query(F.data == "atm:stake")
 async def cb_stake(call: CallbackQuery, session: AsyncSession) -> None:
@@ -349,14 +371,28 @@ async def cb_stake(call: CallbackQuery, session: AsyncSession) -> None:
 @router.callback_query(F.data == "stake:edit")
 async def cb_stake_edit(call: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
     lang = await _lang(session, call.from_user.id)
+    # Check weekly cooldown
+    can, remaining = await repository.check_payment_change_cooldown(
+        session, call.from_user.id, "last_stake_change_at", PAYMENT_CHANGE_COOLDOWN_DAYS
+    )
+    if not can:
+        secs = int(remaining.total_seconds())
+        d, h = secs // 86400, (secs % 86400) // 3600
+        await call.answer(
+            t(lang, "payment_cooldown_stake", d=d, h=h),
+            show_alert=True,
+        )
+        return
     await state.set_state(StakeInput.waiting_value)
-    await call.message.edit_text(t(lang, "stake_enter"), parse_mode="HTML",
-                                 reply_markup=cancel_keyboard(lang, back_cb="atm:stake"))
+    await call.message.edit_text(
+        t(lang, "stake_enter"), parse_mode="HTML",
+        reply_markup=cancel_keyboard(lang, back_cb="atm:stake"),
+    )
     await call.answer()
 
 
 @router.message(StakeInput.waiting_value)
-async def fsm_stake(message: Message, state: FSMContext, session: AsyncSession) -> None:
+async def fsm_stake(message: Message, state: FSMContext, session: AsyncSession, bot: Bot) -> None:
     lang = await _lang(session, message.from_user.id)
     val  = (message.text or "").strip()
     if not val:
@@ -364,29 +400,37 @@ async def fsm_stake(message: Message, state: FSMContext, session: AsyncSession) 
         return
     await state.clear()
     await repository.upsert_payment_data(session, message.from_user.id, stake_user=val)
+    await repository.set_payment_change_timestamp(session, message.from_user.id, "last_stake_change_at")
+
     user = await repository.get_or_create_user(session, message.from_user.id, message.from_user.username)
     pd   = await repository.get_payment_data(session, message.from_user.id)
     num  = f"▫️{user.user_number}" if user.user_number else ""
     display = f"<code>{pd.stake_user}</code>" if pd and pd.stake_user else t(lang, "stake_no_data")
+
     await message.answer(
         t(lang, "stake_saved", val=val) + "\n\n" + t(lang, "stake_header", num=num, val=display),
         parse_mode="HTML",
         reply_markup=stake_keyboard(lang, STAKE_URL, True),
     )
+    # Notify mod group
+    await _notify_payment_change(bot, lang, user, "Stake username", val)
 
 
 @router.callback_query(F.data == "stake:delete")
 async def cb_stake_delete(call: CallbackQuery, session: AsyncSession) -> None:
     lang = await _lang(session, call.from_user.id)
-    await call.message.edit_text(t(lang, "stake_delete_confirm"),
-                                 reply_markup=stake_delete_confirm_keyboard(lang))
+    await call.message.edit_text(
+        t(lang, "stake_delete_confirm"),
+        reply_markup=stake_delete_confirm_keyboard(lang),
+    )
     await call.answer()
 
 
 @router.callback_query(F.data == "stake:delete_confirm")
-async def cb_stake_delete_confirm(call: CallbackQuery, session: AsyncSession) -> None:
+async def cb_stake_delete_confirm(call: CallbackQuery, session: AsyncSession, bot: Bot) -> None:
     lang = await _lang(session, call.from_user.id)
     await repository.clear_payment_field(session, call.from_user.id, "stake_user")
+    await repository.set_payment_change_timestamp(session, call.from_user.id, "last_stake_change_at")
     user = await repository.get_or_create_user(session, call.from_user.id, call.from_user.username)
     num  = f"▫️{user.user_number}" if user.user_number else ""
     await call.message.edit_text(
@@ -395,9 +439,10 @@ async def cb_stake_delete_confirm(call: CallbackQuery, session: AsyncSession) ->
         reply_markup=stake_keyboard(lang, STAKE_URL, False),
     )
     await call.answer()
+    await _notify_payment_change(bot, lang, user, "Stake username", "УДАЛЕНО")
 
 
-# ─── 🟡 Binance ───────────────────────────────────────────────────────────────
+# ─── 🟡 Binance — with weekly cooldown + mod notification ────────────────────
 
 @router.callback_query(F.data == "atm:binance")
 async def cb_binance(call: CallbackQuery, session: AsyncSession) -> None:
@@ -418,14 +463,28 @@ async def cb_binance(call: CallbackQuery, session: AsyncSession) -> None:
 @router.callback_query(F.data == "binance:edit")
 async def cb_binance_edit(call: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
     lang = await _lang(session, call.from_user.id)
+    # Check weekly cooldown
+    can, remaining = await repository.check_payment_change_cooldown(
+        session, call.from_user.id, "last_binance_change_at", PAYMENT_CHANGE_COOLDOWN_DAYS
+    )
+    if not can:
+        secs = int(remaining.total_seconds())
+        d, h = secs // 86400, (secs % 86400) // 3600
+        await call.answer(
+            t(lang, "payment_cooldown_binance", d=d, h=h),
+            show_alert=True,
+        )
+        return
     await state.set_state(BinanceInput.waiting_value)
-    await call.message.edit_text(t(lang, "binance_enter"), parse_mode="HTML",
-                                 reply_markup=cancel_keyboard(lang, back_cb="atm:binance"))
+    await call.message.edit_text(
+        t(lang, "binance_enter"), parse_mode="HTML",
+        reply_markup=cancel_keyboard(lang, back_cb="atm:binance"),
+    )
     await call.answer()
 
 
 @router.message(BinanceInput.waiting_value)
-async def fsm_binance(message: Message, state: FSMContext, session: AsyncSession) -> None:
+async def fsm_binance(message: Message, state: FSMContext, session: AsyncSession, bot: Bot) -> None:
     lang = await _lang(session, message.from_user.id)
     val  = (message.text or "").strip()
     if not val:
@@ -433,29 +492,37 @@ async def fsm_binance(message: Message, state: FSMContext, session: AsyncSession
         return
     await state.clear()
     await repository.upsert_payment_data(session, message.from_user.id, binance_id=val)
+    await repository.set_payment_change_timestamp(session, message.from_user.id, "last_binance_change_at")
+
     user = await repository.get_or_create_user(session, message.from_user.id, message.from_user.username)
     pd   = await repository.get_payment_data(session, message.from_user.id)
     num  = f"▫️{user.user_number}" if user.user_number else ""
     display = f"<code>{pd.binance_id}</code>" if pd and pd.binance_id else t(lang, "stake_no_data")
+
     await message.answer(
         t(lang, "binance_saved", val=val) + "\n\n" + t(lang, "binance_header", num=num, val=display),
         parse_mode="HTML",
         reply_markup=binance_keyboard(lang, BINANCE_URL, True),
     )
+    # Notify mod group
+    await _notify_payment_change(bot, lang, user, "Binance ID", val)
 
 
 @router.callback_query(F.data == "binance:delete")
 async def cb_binance_delete(call: CallbackQuery, session: AsyncSession) -> None:
     lang = await _lang(session, call.from_user.id)
-    await call.message.edit_text(t(lang, "binance_delete_confirm"),
-                                 reply_markup=binance_delete_confirm_keyboard(lang))
+    await call.message.edit_text(
+        t(lang, "binance_delete_confirm"),
+        reply_markup=binance_delete_confirm_keyboard(lang),
+    )
     await call.answer()
 
 
 @router.callback_query(F.data == "binance:delete_confirm")
-async def cb_binance_delete_confirm(call: CallbackQuery, session: AsyncSession) -> None:
+async def cb_binance_delete_confirm(call: CallbackQuery, session: AsyncSession, bot: Bot) -> None:
     lang = await _lang(session, call.from_user.id)
     await repository.clear_payment_field(session, call.from_user.id, "binance_id")
+    await repository.set_payment_change_timestamp(session, call.from_user.id, "last_binance_change_at")
     user = await repository.get_or_create_user(session, call.from_user.id, call.from_user.username)
     num  = f"▫️{user.user_number}" if user.user_number else ""
     await call.message.edit_text(
@@ -464,6 +531,7 @@ async def cb_binance_delete_confirm(call: CallbackQuery, session: AsyncSession) 
         reply_markup=binance_keyboard(lang, BINANCE_URL, False),
     )
     await call.answer()
+    await _notify_payment_change(bot, lang, user, "Binance ID", "УДАЛЕНО")
 
 
 # ─── FSM cancel ───────────────────────────────────────────────────────────────
