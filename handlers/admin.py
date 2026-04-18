@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import ADMIN_IDS, BOT_LINK, GROUP_ID
 from database import repository
-from i18n import t
 from keyboards.inline import (
     admin_panel_keyboard,
     broadcast_confirm_keyboard,

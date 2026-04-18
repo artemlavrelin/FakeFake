@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import BINANCE_URL, LOOT_COOLDOWN_HOURS, MODER_GROUP_ID, STAKE_URL
 from database import repository
-from i18n import t
+from strings import t
 from keyboards.inline import (
     back_to_menu_keyboard, cancel_keyboard,
     loot_no_data_keyboard, loot_roll_keyboard, loot_start_keyboard,

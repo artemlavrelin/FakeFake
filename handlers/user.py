@@ -10,7 +10,7 @@ from config import (
     REVIEW_COOLDOWN_HOURS, STAKE_URL,
 )
 from database import repository
-from i18n import t
+from strings import t
 from keyboards.inline import (
     back_to_menu_keyboard, binance_delete_confirm_keyboard, binance_keyboard,
     cancel_keyboard, contest_not_participating_keyboard, contest_participating_keyboard,
