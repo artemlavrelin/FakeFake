@@ -9,9 +9,11 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.storage.redis import RedisStorage
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
-from config import BOT_TOKEN, REDIS_URL, USE_WEBHOOK, WEBAPP_HOST, WEBAPP_PORT, WEBHOOK_PATH, WEBHOOK_URL
-from database import init_db
-from handlers import admin, liketime, loot, social, user
+from config import (
+    BOT_TOKEN, REDIS_URL, USE_WEBHOOK,
+    WEBAPP_HOST, WEBAPP_PORT, WEBHOOK_PATH, WEBHOOK_URL,
+)
+from database.engine import init_db
 from middlewares.db import DbSessionMiddleware
 from middlewares.fsm_command_guard import FsmCommandGuardMiddleware
 from middlewares.private_only import PrivateChatOnlyMiddleware
@@ -31,36 +33,44 @@ def build_storage():
 
 
 def build_dispatcher() -> Dispatcher:
+    # Import routers here — inside function — to avoid circular imports at module load
+    from handlers.user import router as user_router
+    from handlers.loot import router as loot_router
+    from handlers.liketime import router as liketime_router
+    from handlers.social import router as social_router
+    from handlers.admin import router as admin_router
+
     dp = Dispatcher(storage=build_storage())
 
     # Middleware chain (order matters)
-    dp.message.middleware(PrivateChatOnlyMiddleware())       # 1. drop group messages (except group_join)
+    dp.message.middleware(PrivateChatOnlyMiddleware())        # 1. drop non-private (except group_join)
     dp.callback_query.middleware(PrivateChatOnlyMiddleware())
 
-    dp.message.middleware(FsmCommandGuardMiddleware())       # 2. /start always resets FSM
+    dp.message.middleware(FsmCommandGuardMiddleware())        # 2. /start always resets FSM
 
-    dp.callback_query.middleware(ThrottleMiddleware())       # 3. anti-spam
+    dp.callback_query.middleware(ThrottleMiddleware())        # 3. anti-spam callbacks
 
-    dp.message.middleware(DbSessionMiddleware())             # 4. DB session
+    dp.message.middleware(DbSessionMiddleware())              # 4. inject DB session
     dp.callback_query.middleware(DbSessionMiddleware())
 
-    # Register routers — user FIRST so cancel_fsm goes to user handler
-    dp.include_router(user.router)
-    dp.include_router(loot.router)
-    dp.include_router(liketime.router)
-    dp.include_router(social.router)
-    dp.include_router(admin.router)
+    # Register routers: user first so generic cancel_fsm/menu go to user handler
+    dp.include_router(user_router)
+    dp.include_router(loot_router)
+    dp.include_router(liketime_router)
+    dp.include_router(social_router)
+    dp.include_router(admin_router)
     return dp
 
 
 async def on_startup(bot: Bot) -> None:
     await init_db()
     await bot.set_webhook(WEBHOOK_URL)
-    logger.info("Webhook: %s", WEBHOOK_URL)
+    logger.info("Webhook registered: %s", WEBHOOK_URL)
 
 
 async def on_shutdown(bot: Bot) -> None:
     await bot.delete_webhook()
+    logger.info("Webhook deleted.")
 
 
 def run_webhook() -> None:
@@ -89,7 +99,7 @@ async def run_polling() -> None:
 
 
 if __name__ == "__main__":
-    logger.info("ContestBot v8 | mode=%s", "WEBHOOK" if USE_WEBHOOK else "POLLING")
+    logger.info("ContestBot v8fix | mode=%s", "WEBHOOK" if USE_WEBHOOK else "POLLING")
     if USE_WEBHOOK:
         run_webhook()
     else:
