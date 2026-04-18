@@ -28,3 +28,9 @@ class BinanceInput(StatesGroup):
 
 class ReviewInput(StatesGroup):
     waiting_content = State()
+
+
+class LootFSM(StatesGroup):
+    waiting_binance_screenshot = State()
+    waiting_stake_screenshot   = State()
+    confirm                    = State()
