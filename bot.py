@@ -31,13 +31,18 @@ def build_storage():
 
 
 def build_dispatcher() -> Dispatcher:
-    from handlers.user      import router as user_router
-    from handlers.loot      import router as loot_router
-    from handlers.liketime  import router as liketime_router
-    from handlers.social    import router as social_router
-    from handlers.slot      import router as slot_router
-    from handlers.bet       import router as bet_router
-    from handlers.admin     import router as admin_router
+    from handlers.user         import router as user_router
+    from handlers.loot         import router as loot_router
+    from handlers.liketime     import router as liketime_router
+    from handlers.social       import router as social_router
+    from handlers.slot         import router as slot_router
+    from handlers.bet          import router as bet_router
+    from handlers.profile      import router as profile_router
+    from handlers.payments     import router as payments_router
+    from handlers.tasks_admin  import router as tasks_admin_router
+    from handlers.tasks_user   import router as tasks_user_router
+    from handlers.admin_stats  import router as admin_stats_router
+    from handlers.admin        import router as admin_router
 
     dp = Dispatcher(storage=build_storage())
     dp.message.middleware(PrivateChatOnlyMiddleware())
@@ -47,12 +52,18 @@ def build_dispatcher() -> Dispatcher:
     dp.message.middleware(DbSessionMiddleware())
     dp.callback_query.middleware(DbSessionMiddleware())
 
+    # Order matters — user first for cancel_fsm/menu
     dp.include_router(user_router)
+    dp.include_router(profile_router)
+    dp.include_router(payments_router)
+    dp.include_router(tasks_user_router)
+    dp.include_router(tasks_admin_router)
     dp.include_router(loot_router)
     dp.include_router(slot_router)
     dp.include_router(bet_router)
     dp.include_router(liketime_router)
     dp.include_router(social_router)
+    dp.include_router(admin_stats_router)
     dp.include_router(admin_router)
     return dp
 
@@ -61,7 +72,7 @@ async def on_startup(bot: Bot) -> None:
     await init_db()
     scheduler = create_scheduler()
     scheduler.start()
-    logger.info("Scheduler started (daily slot update at 00:00 Budapest)")
+    logger.info("Scheduler started")
     await bot.set_webhook(WEBHOOK_URL)
     logger.info("Webhook: %s", WEBHOOK_URL)
 
@@ -100,7 +111,7 @@ async def run_polling() -> None:
 
 
 if __name__ == "__main__":
-    logger.info("ContestBot v10 | mode=%s", "WEBHOOK" if USE_WEBHOOK else "POLLING")
+    logger.info("ContestBot v11 | mode=%s", "WEBHOOK" if USE_WEBHOOK else "POLLING")
     if USE_WEBHOOK:
         run_webhook()
     else:
