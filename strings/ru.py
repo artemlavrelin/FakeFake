@@ -10,7 +10,6 @@ class RU:
     btn_loot             = "📫 Получить приз"
     btn_back             = "⬅️ Назад"
     btn_cancel           = "⬅️ Отмена"
-    btn_to_menu          = "⬅️ В меню"
     btn_go               = "➡️ Перейти"
 
     # Raffle
@@ -29,7 +28,7 @@ class RU:
     group_joined             = "✅ Вы зарегистрированы!\n👥 Участников: {n}"
     group_finished           = "❌ Конкурс уже завершён."
 
-    # Report / Reviews (merged section)
+    # Report + Reviews
     report_text = (
         "⭐️ <b>ВЫПЛАТЫ / ОТЗЫВЫ</b>\n\n"
         "<b>{title}</b> — прозрачная отчётность системы:\n\n"
@@ -37,36 +36,32 @@ class RU:
         "• 🏆 Результаты розыгрышей\n"
         "• 💬 Отзывы участников\n"
         "• 📊 Статистика победителей\n"
-        "• 🔍 Данные, подтверждающие прозрачность работы\n\n"
+        "• 🔍 Данные, подтверждающие прозрачность\n\n"
         "Перейди в канал или оставь свой отзыв:"
     )
-    btn_leave_review    = "✍️ Оставить отзыв"
-    review_prompt       = (
-        "✍️ <b>Напишите ваш отзыв</b>\n\n"
-        "Вы можете отправить:\n• текст\n• фото\n• видео\n\n"
-        "Один отзыв каждые 12 часов."
-    )
-    review_sent         = "✅ Спасибо! Ваш отзыв отправлен."
-    review_cooldown     = "⏳ Следующий отзыв через <b>{h}ч {m}м</b>."
-    review_moder_header = "💬 <b>Новый отзыв</b>\n\n👤 @{username} | <code>{uid}</code> | ▫️{num}"
+    btn_leave_review         = "✍️ Оставить отзыв"
+    review_prompt            = "✍️ <b>Напишите ваш отзыв</b>\n\nМожно отправить:\n• текст\n• фото\n• видео\n\nОдин отзыв каждые 12 часов."
+    review_sent              = "✅ Спасибо! Ваш отзыв отправлен."
+    review_cooldown          = "⏳ Следующий отзыв через <b>{h}ч {m}м</b>."
+    review_moder_header      = "💬 <b>Новый отзыв</b>\n\n👤 @{username} | <code>{uid}</code> | ▫️{num}"
     review_moder_no_username = "(без username)"
 
     # My stats
-    stats_header        = "👀 <b>МОЯ СТАТИСТИКА</b>"
+    stats_header         = "👀 <b>МОЯ СТАТИСТИКА</b>"
     stats_participations = "🎲 Участий: <b>{n}</b>"
-    stats_wins          = "🔥 Побед: <b>{n}</b>"
-    stats_prize_sum     = "💵 Сумма выигрышей: <b>{s}</b>"
-    stats_last_win      = "🍷 Последняя победа: <b>{d}</b>"
-    stats_no_wins       = "\nУдачи в следующий раз! 🍀"
-    stats_won_once      = "\nВы побеждали 1× — отличный результат! 🌟"
-    stats_won_many      = "\nВы побеждали {n}× — вы везунчик! 🌟"
+    stats_wins           = "🔥 Побед: <b>{n}</b>"
+    stats_prize_sum      = "💵 Сумма выигрышей: <b>{s}</b>"
+    stats_last_win       = "🍷 Последняя победа: <b>{d}</b>"
+    stats_no_wins        = "\nУдачи в следующий раз! 🍀"
+    stats_won_once       = "\nВы побеждали 1× — отличный результат! 🌟"
+    stats_won_many       = "\nВы побеждали {n}× — вы везунчик! 🌟"
 
     # Public stats
     public_stats_header  = "👥 <b>ОБЩАЯ СТАТИСТИКА</b>"
     public_finished      = "🤹🏻 Завершено конкурсов: <b>{n}</b>"
-    public_participants  = "👥 Всего участий: <b>{n}</b>"
-    public_winners       = "🏆 Победителей выбрано: <b>{n}</b>"
-    public_prize_sum     = "💰 Сумма призов: <b>{s}</b>"
+    public_participants  = "🤞🏻 Участвовали: <b>{n}</b>"
+    public_winners       = "🏆 Победители: <b>{n}</b>"
+    public_prize_sum     = "💵 Выплачено: <b>{s}</b>"
     btn_top_winners      = "🏆 Топ победителей"
     btn_top_participants = "👥 Топ участников"
     top_winners_header   = "🏆 <b>ТОП ПОБЕДИТЕЛЕЙ</b>"
@@ -76,77 +71,76 @@ class RU:
     top_wins_row         = "{medal} {name} — <b>{n}</b> побед"
     top_parts_row        = "{medal} {name} — <b>{n}</b> участий"
 
-    # Stake
-    stake_header         = "🤞🏻 <b>STAKE</b>\n\n{num}\n\n🎰 Stake username: {val}"
-    stake_no_data        = "—"
-    btn_edit             = "✏️ Изменить"
-    btn_delete           = "🗑 Удалить"
-    btn_reg_stake        = "🔗 Reg Stake"
+    # Stake — dynamic (no data)
+    stake_header_empty   = "🤞🏻 <b>STAKE</b>\n\n{num}\n\n🎰 Stake username: —"
+    btn_add_username     = "✅ Добавить username"
+    btn_reg_stake        = "🔗 Регистрация"
     stake_enter          = "🤞🏻 Введите ваш <b>Stake username</b>:"
-    stake_saved          = "✅ Stake username сохранён: <code>{val}</code>"
-    stake_deleted        = "🗑 Stake username удалён."
-    stake_delete_confirm = "Удалить Stake username?"
-    btn_yes_delete       = "✅ Да, удалить"
+    stake_added          = "✅ Stake username сохранён: <code>{val}</code>"
 
-    # Binance
-    binance_header         = "🟡 <b>BINANCE</b>\n\n{num}\n\n💛 Binance ID: {val}"
-    btn_reg_binance        = "🔗 Reg Binance"
-    binance_enter          = "🟡 Введите ваш <b>Binance ID</b>:"
-    binance_saved          = "✅ Binance ID сохранён: <code>{val}</code>"
-    binance_deleted        = "🗑 Binance ID удалён."
-    binance_delete_confirm = "Удалить Binance ID?"
+    # Stake — with data
+    stake_header_filled  = "🤞🏻 <b>STAKE</b>\n\n{num}\n\n🎰 Stake username: <code>{val}</code>"
+    btn_edit_stake       = "✏️ Изменить"
+    stake_updated        = "✅ Stake username обновлён: <code>{val}</code>"
 
-    # Loot
-    loot_no_data = (
-        "📫 <b>ПОЛУЧИТЬ ПРИЗ</b>\n\n"
-        "Для получения приза необходимо зарегистрировать <b>Binance</b> и <b>Stake</b> и пройти верификацию.\n\n"
-        "После этого вы получите случайную награду от $0.10 до $10 💰"
-    )
-    loot_go_register    = "🔗 Зарегистрироваться"
-    loot_banned_msg     = "👉 Вы уже получили свой приз"
-    loot_cooldown       = "⏳ Следующий приз через <b>{h}ч {m}м</b>."
-    loot_start_text     = (
-        "📫 <b>ПОЛУЧИТЬ ПРИЗ</b>\n\n"
-        "💛 Binance ID: <code>{binance}</code>\n"
-        "🤞🏻 Stake: <code>{stake}</code>\n\n"
-        "Нажмите кнопку, чтобы начать:"
-    )
-    btn_loot_start      = "🎁 Loot / Получить"
-    loot_send_binance   = "📸 Отправьте <b>скриншот вашего Binance ID</b>:"
-    loot_send_stake     = "📸 Отправьте <b>скриншот вашего Stake username</b>:"
-    loot_ready          = "✅ Скриншоты получены. Нажмите кнопку для розыгрыша:"
-    btn_loot_roll       = "🎁 Loot"
-    loot_result         = "🎉 <b>Поздравляем!</b>\n\nВы выиграли: <b>${prize}</b>\n\nПосле проверки сумма будет отправлена на ваш баланс Stake или Binance."
-    loot_moder_header   = (
-        "📫 <b>LOOT ЗАЯВКА</b>\n\n"
-        "👤 @{username} | <code>{uid}</code> | ▫️{num}\n"
-        "💰 Выигрыш: <b>${prize}</b>\n"
-        "💛 Binance: <code>{binance}</code>\n"
-        "🤞🏻 Stake: <code>{stake}</code>"
-    )
-    loot_photo_binance  = "📸 Скриншот Binance:"
-    loot_photo_stake    = "📸 Скриншот Stake:"
-    loot_no_photo       = "(скриншот не предоставлен)"
+    # Stake cooldown & delete
+    payment_cooldown_stake   = "⏳ Изменить Stake можно раз в 7 дней. Осталось: <b>{d}д {h}ч</b>."
+    stake_delete_confirm     = "Удалить Stake username?"
+    btn_yes_delete           = "✅ Да, удалить"
+    stake_deleted            = "🗑 Stake username удалён."
+    btn_delete               = "🗑 Удалить"
+    stake_no_data            = "—"
 
-    # Notifications
-    notify_winner = (
-        "🎉 <b>Поздравляем — вы победили!</b>\n\n"
-        "📌 {title}\n💰 Приз: {prize}\n\n"
-        "Свяжитесь с администратором для получения приза."
-    )
-    notify_other  = (
-        "🤹🏻 <b>Конкурс завершён</b>\n\n📌 {title}\n\n"
-        "🏆 <b>Победители:</b>\n{winners}\n\nСпасибо за участие! 🍀"
-    )
+    # Binance — dynamic (no data)
+    binance_header_empty  = "🟡 <b>BINANCE</b>\n\n{num}\n\n💛 Binance ID: —"
+    btn_add_binance       = "✅ Добавить Binance ID"
+    btn_reg_binance       = "🔗 Регистрация"
+    binance_enter         = "🟡 Введите ваш <b>Binance ID</b>:"
+    binance_added         = "✅ Binance ID сохранён: <code>{val}</code>"
 
-    # Payment change cooldown
-    payment_cooldown_stake   = "⏳ Stake username можно менять раз в 7 дней. Осталось: <b>{d}д {h}ч</b>."
-    payment_cooldown_binance = "⏳ Binance ID можно менять раз в 7 дней. Осталось: <b>{d}д {h}ч</b>."
+    # Binance — with data
+    binance_header_filled = "🟡 <b>BINANCE</b>\n\n{num}\n\n💛 Binance ID: <code>{val}</code>"
+    btn_edit_binance      = "✏️ Изменить"
+    binance_updated       = "✅ Binance ID обновлён: <code>{val}</code>"
 
-    # Mod notification on payment change
+    payment_cooldown_binance = "⏳ Изменить Binance можно раз в 7 дней. Осталось: <b>{d}д {h}ч</b>."
+    binance_delete_confirm   = "Удалить Binance ID?"
+    binance_deleted          = "🗑 Binance ID удалён."
+
+    # Payment change mod notification (only on EDIT, not on first add)
     payment_changed_moder = (
         "✏️ <b>Изменение платёжных данных</b>\n\n"
         "👤 @{username} | <code>{uid}</code> | ▫️{num}\n"
         "🔧 Поле: <b>{field}</b>\n"
         "📝 Новое значение: <code>{value}</code>"
     )
+
+    # Loot
+    loot_no_data     = (
+        "📫 <b>ПОЛУЧИТЬ ПРИЗ</b>\n\n"
+        "Для получения приза необходимо зарегистрировать <b>Binance</b> и <b>Stake</b> и пройти верификацию.\n\n"
+        "После этого вы получите случайную награду от $0.10 до $10 💰"
+    )
+    loot_banned_msg  = "👉 Вы уже получили свой приз"
+    loot_cooldown    = "⏳ Следующий приз через <b>{h}ч {m}м</b>."
+    loot_start_text  = "📫 <b>ПОЛУЧИТЬ ПРИЗ</b>\n\n💛 Binance ID: <code>{binance}</code>\n🤞🏻 Stake: <code>{stake}</code>\n\nНажмите кнопку, чтобы начать:"
+    btn_loot_start   = "🎁 Loot / Получить"
+    loot_send_binance= "📸 Отправьте <b>скриншот вашего Binance ID</b>:"
+    loot_send_stake  = "📸 Отправьте <b>скриншот вашего Stake username</b>:"
+    loot_ready       = "✅ Скриншоты получены. Нажмите кнопку для розыгрыша:"
+    btn_loot_roll    = "🎁 Loot"
+    loot_result      = "🎉 <b>Поздравляем!</b>\n\nВы выиграли: <b>${prize}</b>\n\nПосле проверки сумма будет отправлена на ваш баланс Stake или Binance."
+    loot_moder_header= (
+        "📫 <b>LOOT ЗАЯВКА</b>\n\n"
+        "👤 @{username} | <code>{uid}</code> | ▫️{num}\n"
+        "💰 Выигрыш: <b>${prize}</b>\n"
+        "💛 Binance: <code>{binance}</code>\n"
+        "🤞🏻 Stake: <code>{stake}</code>"
+    )
+    loot_photo_binance= "📸 Скриншот Binance:"
+    loot_photo_stake  = "📸 Скриншот Stake:"
+    loot_no_photo     = "(скриншот не предоставлен)"
+
+    # Notifications after draw
+    notify_winner = "🎉 <b>Поздравляем — вы победили!</b>\n\n📌 {title}\n💰 Приз: {prize}\n\nСвяжитесь с администратором для получения приза."
+    notify_other  = "🤹🏻 <b>Конкурс завершён</b>\n\n📌 {title}\n\n🏆 <b>Победители:</b>\n{winners}\n\nСпасибо за участие! 🍀"

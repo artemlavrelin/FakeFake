@@ -10,7 +10,6 @@ class EN:
     btn_loot             = "📫 Claim prize"
     btn_back             = "⬅️ Back"
     btn_cancel           = "⬅️ Cancel"
-    btn_to_menu          = "⬅️ Menu"
     btn_go               = "➡️ Go"
 
     raffle_no_contest        = "🤹🏻 <b>RAFFLE</b>\n\nNo active contest right now.\nStay tuned!"
@@ -38,15 +37,11 @@ class EN:
         "• 🔍 Transparency proof\n\n"
         "Open the channel or leave a review:"
     )
-    btn_leave_review    = "✍️ Leave a review"
-    review_prompt       = (
-        "✍️ <b>Write your review</b>\n\n"
-        "You can send:\n• text\n• photo\n• video\n\n"
-        "One review every 12 hours."
-    )
-    review_sent         = "✅ Thank you! Your review has been sent."
-    review_cooldown     = "⏳ Next review available in <b>{h}h {m}m</b>."
-    review_moder_header = "💬 <b>New review</b>\n\n👤 @{username} | <code>{uid}</code> | ▫️{num}"
+    btn_leave_review         = "✍️ Leave a review"
+    review_prompt            = "✍️ <b>Write your review</b>\n\nYou can send:\n• text\n• photo\n• video\n\nOne review every 12 hours."
+    review_sent              = "✅ Thank you! Your review has been sent."
+    review_cooldown          = "⏳ Next review available in <b>{h}h {m}m</b>."
+    review_moder_header      = "💬 <b>New review</b>\n\n👤 @{username} | <code>{uid}</code> | ▫️{num}"
     review_moder_no_username = "(no username)"
 
     stats_header         = "👀 <b>MY STATISTICS</b>"
@@ -60,9 +55,9 @@ class EN:
 
     public_stats_header  = "👥 <b>GENERAL STATISTICS</b>"
     public_finished      = "🤹🏻 Raffles completed: <b>{n}</b>"
-    public_participants  = "👥 Total entries: <b>{n}</b>"
-    public_winners       = "🏆 Winners selected: <b>{n}</b>"
-    public_prize_sum     = "💰 Total prizes: <b>{s}</b>"
+    public_participants  = "🤞🏻 Participated: <b>{n}</b>"
+    public_winners       = "🏆 Winners: <b>{n}</b>"
+    public_prize_sum     = "💵 Paid out: <b>{s}</b>"
     btn_top_winners      = "🏆 Top winners"
     btn_top_participants = "👥 Top participants"
     top_winners_header   = "🏆 <b>TOP WINNERS</b>"
@@ -72,73 +67,54 @@ class EN:
     top_wins_row         = "{medal} {name} — <b>{n}</b> wins"
     top_parts_row        = "{medal} {name} — <b>{n}</b> entries"
 
-    stake_header         = "🤞🏻 <b>STAKE</b>\n\n{num}\n\n🎰 Stake username: {val}"
-    stake_no_data        = "—"
-    btn_edit             = "✏️ Edit"
-    btn_delete           = "🗑 Delete"
-    btn_reg_stake        = "🔗 Reg Stake"
+    stake_header_empty   = "🤞🏻 <b>STAKE</b>\n\n{num}\n\n🎰 Stake username: —"
+    btn_add_username     = "✅ Add username"
+    btn_reg_stake        = "🔗 Register"
     stake_enter          = "🤞🏻 Enter your <b>Stake username</b>:"
-    stake_saved          = "✅ Stake username saved: <code>{val}</code>"
-    stake_deleted        = "🗑 Stake username deleted."
-    stake_delete_confirm = "Delete Stake username?"
-    btn_yes_delete       = "✅ Yes, delete"
+    stake_added          = "✅ Stake username saved: <code>{val}</code>"
+    stake_header_filled  = "🤞🏻 <b>STAKE</b>\n\n{num}\n\n🎰 Stake username: <code>{val}</code>"
+    btn_edit_stake       = "✏️ Edit"
+    stake_updated        = "✅ Stake username updated: <code>{val}</code>"
+    payment_cooldown_stake   = "⏳ Stake can be changed once per 7 days. Time left: <b>{d}d {h}h</b>."
+    stake_delete_confirm     = "Delete Stake username?"
+    btn_yes_delete           = "✅ Yes, delete"
+    stake_deleted            = "🗑 Stake username deleted."
+    btn_delete               = "🗑 Delete"
+    stake_no_data            = "—"
 
-    binance_header         = "🟡 <b>BINANCE</b>\n\n{num}\n\n💛 Binance ID: {val}"
-    btn_reg_binance        = "🔗 Reg Binance"
-    binance_enter          = "🟡 Enter your <b>Binance ID</b>:"
-    binance_saved          = "✅ Binance ID saved: <code>{val}</code>"
-    binance_deleted        = "🗑 Binance ID deleted."
-    binance_delete_confirm = "Delete Binance ID?"
+    binance_header_empty  = "🟡 <b>BINANCE</b>\n\n{num}\n\n💛 Binance ID: —"
+    btn_add_binance       = "✅ Add Binance ID"
+    btn_reg_binance       = "🔗 Register"
+    binance_enter         = "🟡 Enter your <b>Binance ID</b>:"
+    binance_added         = "✅ Binance ID saved: <code>{val}</code>"
+    binance_header_filled = "🟡 <b>BINANCE</b>\n\n{num}\n\n💛 Binance ID: <code>{val}</code>"
+    btn_edit_binance      = "✏️ Edit"
+    binance_updated       = "✅ Binance ID updated: <code>{val}</code>"
+    payment_cooldown_binance = "⏳ Binance can be changed once per 7 days. Time left: <b>{d}d {h}h</b>."
+    binance_delete_confirm   = "Delete Binance ID?"
+    binance_deleted          = "🗑 Binance ID deleted."
 
-    loot_no_data = (
-        "📫 <b>CLAIM PRIZE</b>\n\n"
-        "To claim a prize you need to register <b>Binance</b> and <b>Stake</b> and get verified.\n\n"
-        "You will then receive a random reward from $0.10 to $10 💰"
-    )
-    loot_go_register    = "🔗 Register"
-    loot_banned_msg     = "👉 You have already claimed your prize"
-    loot_cooldown       = "⏳ Next prize available in <b>{h}h {m}m</b>."
-    loot_start_text     = (
-        "📫 <b>CLAIM PRIZE</b>\n\n"
-        "💛 Binance ID: <code>{binance}</code>\n"
-        "🤞🏻 Stake: <code>{stake}</code>\n\n"
-        "Press the button to start:"
-    )
-    btn_loot_start      = "🎁 Loot / Claim"
-    loot_send_binance   = "📸 Send a <b>screenshot of your Binance ID</b>:"
-    loot_send_stake     = "📸 Send a <b>screenshot of your Stake username</b>:"
-    loot_ready          = "✅ Screenshots received. Press the button to roll:"
-    btn_loot_roll       = "🎁 Loot"
-    loot_result         = "🎉 <b>Congratulations!</b>\n\nYou won: <b>${prize}</b>\n\nAfter verification the amount will be sent to your Stake or Binance balance."
-    loot_moder_header   = (
-        "📫 <b>LOOT REQUEST</b>\n\n"
-        "👤 @{username} | <code>{uid}</code> | ▫️{num}\n"
-        "💰 Prize: <b>${prize}</b>\n"
-        "💛 Binance: <code>{binance}</code>\n"
-        "🤞🏻 Stake: <code>{stake}</code>"
-    )
-    loot_photo_binance  = "📸 Binance screenshot:"
-    loot_photo_stake    = "📸 Stake screenshot:"
-    loot_no_photo       = "(screenshot not provided)"
-
-    notify_winner = (
-        "🎉 <b>Congratulations — you won!</b>\n\n"
-        "📌 {title}\n💰 Prize: {prize}\n\n"
-        "Contact the admin to claim your prize."
-    )
-    notify_other = (
-        "🤹🏻 <b>Raffle finished</b>\n\n📌 {title}\n\n"
-        "🏆 <b>Winners:</b>\n{winners}\n\nThanks for participating! 🍀"
-    )
-
-    # Payment change cooldown
-    payment_cooldown_stake   = "⏳ Stake username can only be changed once every 7 days. Time left: <b>{d}d {h}h</b>."
-    payment_cooldown_binance = "⏳ Binance ID can only be changed once every 7 days. Time left: <b>{d}d {h}h</b>."
-
-    # Mod notification on payment change
     payment_changed_moder = (
         "✏️ <b>Payment data changed</b>\n\n"
         "👤 @{username} | <code>{uid}</code> | ▫️{num}\n"
         "🔧 Field: <b>{field}</b>\n"
         "📝 New value: <code>{value}</code>"
     )
+
+    loot_no_data      = "📫 <b>CLAIM PRIZE</b>\n\nTo claim a prize you need to register <b>Binance</b> and <b>Stake</b> and get verified.\n\nYou will then receive a random reward from $0.10 to $10 💰"
+    loot_banned_msg   = "👉 You have already claimed your prize"
+    loot_cooldown     = "⏳ Next prize available in <b>{h}h {m}m</b>."
+    loot_start_text   = "📫 <b>CLAIM PRIZE</b>\n\n💛 Binance ID: <code>{binance}</code>\n🤞🏻 Stake: <code>{stake}</code>\n\nPress the button to start:"
+    btn_loot_start    = "🎁 Loot / Claim"
+    loot_send_binance = "📸 Send a <b>screenshot of your Binance ID</b>:"
+    loot_send_stake   = "📸 Send a <b>screenshot of your Stake username</b>:"
+    loot_ready        = "✅ Screenshots received. Press the button to roll:"
+    btn_loot_roll     = "🎁 Loot"
+    loot_result       = "🎉 <b>Congratulations!</b>\n\nYou won: <b>${prize}</b>\n\nAfter verification the amount will be sent to your Stake or Binance balance."
+    loot_moder_header = "📫 <b>LOOT REQUEST</b>\n\n👤 @{username} | <code>{uid}</code> | ▫️{num}\n💰 Prize: <b>${prize}</b>\n💛 Binance: <code>{binance}</code>\n🤞🏻 Stake: <code>{stake}</code>"
+    loot_photo_binance= "📸 Binance screenshot:"
+    loot_photo_stake  = "📸 Stake screenshot:"
+    loot_no_photo     = "(screenshot not provided)"
+
+    notify_winner = "🎉 <b>Congratulations — you won!</b>\n\n📌 {title}\n💰 Prize: {prize}\n\nContact the admin to claim your prize."
+    notify_other  = "🤹🏻 <b>Raffle finished</b>\n\n📌 {title}\n\n🏆 <b>Winners:</b>\n{winners}\n\nThanks for participating! 🍀"
