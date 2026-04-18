@@ -1,21 +1,22 @@
 import random
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Optional
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from database.models import Contest, ContestParticipant, PaymentData, User, Winner
+from database.models import (
+    BetPost, Contest, ContestParticipant,
+    GlobalSlot, PaymentData, User, UserSlot, Winner,
+)
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
 async def _generate_unique_number(session: AsyncSession) -> int:
-    used_r = await session.execute(
-        select(User.user_number).where(User.user_number.isnot(None))
-    )
+    used_r = await session.execute(select(User.user_number).where(User.user_number.isnot(None)))
     used = set(used_r.scalars().all())
     pool = list(set(range(1, 10000)) - used)
     return random.choice(pool) if pool else random.randint(10000, 99999)
@@ -25,8 +26,7 @@ async def _generate_unique_number(session: AsyncSession) -> int:
 
 async def get_or_create_user(session: AsyncSession, telegram_id: int, username: Optional[str]) -> User:
     result = await session.execute(
-        select(User).where(User.telegram_id == telegram_id)
-        .options(selectinload(User.payment))
+        select(User).where(User.telegram_id == telegram_id).options(selectinload(User.payment))
     )
     user = result.scalar_one_or_none()
     if not user:
@@ -60,8 +60,7 @@ async def set_lang(session: AsyncSession, telegram_id: int, lang: str) -> Option
 
 async def get_user(session: AsyncSession, telegram_id: int) -> Optional[User]:
     result = await session.execute(
-        select(User).where(User.telegram_id == telegram_id)
-        .options(selectinload(User.payment))
+        select(User).where(User.telegram_id == telegram_id).options(selectinload(User.payment))
     )
     return result.scalar_one_or_none()
 
@@ -72,7 +71,6 @@ async def set_ban(session: AsyncSession, telegram_id: int, banned: bool) -> Opti
     if user:
         user.is_banned = banned
         await session.commit()
-        logger.info("User %s | telegram_id=%s", "banned" if banned else "unbanned", telegram_id)
     return user
 
 
@@ -93,22 +91,18 @@ async def list_users(session: AsyncSession) -> list[User]:
 
 
 async def get_all_user_ids(session: AsyncSession) -> list[int]:
-    result = await session.execute(
-        select(User.telegram_id).where(User.is_banned == False)
-    )
+    result = await session.execute(select(User.telegram_id).where(User.is_banned == False))
     return list(result.scalars().all())
 
 
-# ─── Cooldowns (generic) ──────────────────────────────────────────────────────
+# ─── Cooldowns ────────────────────────────────────────────────────────────────
 
-async def check_cooldown(
-    session: AsyncSession, telegram_id: int, field: str, hours: int
-) -> tuple[bool, Optional[timedelta]]:
+async def check_cooldown(session: AsyncSession, telegram_id: int, field: str, hours: int) -> tuple[bool, Optional[timedelta]]:
     result = await session.execute(select(User).where(User.telegram_id == telegram_id))
     user   = result.scalar_one_or_none()
     if not user:
         return True, None
-    last     = getattr(user, field, None)
+    last = getattr(user, field, None)
     if not last:
         return True, None
     elapsed  = datetime.utcnow() - last
@@ -126,20 +120,12 @@ async def set_timestamp(session: AsyncSession, telegram_id: int, field: str) -> 
         await session.commit()
 
 
-# ─── Payment change cooldown (1 week) ────────────────────────────────────────
-
-async def check_payment_change_cooldown(
-    session: AsyncSession, telegram_id: int, field: str, days: int
-) -> tuple[bool, Optional[timedelta]]:
-    """
-    field: "last_stake_change_at" | "last_binance_change_at"
-    Returns (can_change, remaining) — admins bypass this check externally.
-    """
+async def check_payment_change_cooldown(session: AsyncSession, telegram_id: int, field: str, days: int) -> tuple[bool, Optional[timedelta]]:
     result = await session.execute(select(User).where(User.telegram_id == telegram_id))
     user   = result.scalar_one_or_none()
     if not user:
         return True, None
-    last     = getattr(user, field, None)
+    last = getattr(user, field, None)
     if not last:
         return True, None
     elapsed  = datetime.utcnow() - last
@@ -149,10 +135,7 @@ async def check_payment_change_cooldown(
     return False, cooldown - elapsed
 
 
-async def set_payment_change_timestamp(
-    session: AsyncSession, telegram_id: int, field: str
-) -> None:
-    """Mark that a payment field was just changed (for cooldown tracking)."""
+async def set_payment_change_timestamp(session: AsyncSession, telegram_id: int, field: str) -> None:
     result = await session.execute(select(User).where(User.telegram_id == telegram_id))
     user   = result.scalar_one_or_none()
     if user:
@@ -160,7 +143,7 @@ async def set_payment_change_timestamp(
         await session.commit()
 
 
-# ─── User statistics ──────────────────────────────────────────────────────────
+# ─── Stats ────────────────────────────────────────────────────────────────────
 
 async def get_user_stats(session: AsyncSession, telegram_id: int) -> dict:
     part_r  = await session.execute(select(func.count()).where(ContestParticipant.telegram_id == telegram_id))
@@ -293,16 +276,12 @@ async def add_participant(session: AsyncSession, contest_id: int, telegram_id: i
 
 
 async def get_participant_count(session: AsyncSession, contest_id: int) -> int:
-    result = await session.execute(
-        select(func.count()).where(ContestParticipant.contest_id == contest_id)
-    )
+    result = await session.execute(select(func.count()).where(ContestParticipant.contest_id == contest_id))
     return result.scalar() or 0
 
 
 async def get_all_participants(session: AsyncSession, contest_id: int) -> list[ContestParticipant]:
-    result = await session.execute(
-        select(ContestParticipant).where(ContestParticipant.contest_id == contest_id)
-    )
+    result = await session.execute(select(ContestParticipant).where(ContestParticipant.contest_id == contest_id))
     return list(result.scalars().all())
 
 
@@ -331,18 +310,14 @@ async def draw_winners(session: AsyncSession, contest: Contest) -> tuple[list[Wi
 # ─── Payment data ─────────────────────────────────────────────────────────────
 
 async def get_payment_data(session: AsyncSession, telegram_id: int) -> Optional[PaymentData]:
-    result = await session.execute(
-        select(PaymentData).where(PaymentData.telegram_id == telegram_id)
-    )
+    result = await session.execute(select(PaymentData).where(PaymentData.telegram_id == telegram_id))
     return result.scalar_one_or_none()
 
 
 async def upsert_payment_data(session: AsyncSession, telegram_id: int,
                                binance_id: Optional[str] = None,
                                stake_user: Optional[str] = None) -> PaymentData:
-    result = await session.execute(
-        select(PaymentData).where(PaymentData.telegram_id == telegram_id)
-    )
+    result = await session.execute(select(PaymentData).where(PaymentData.telegram_id == telegram_id))
     pd = result.scalar_one_or_none()
     if not pd:
         pd = PaymentData(telegram_id=telegram_id, binance_id=binance_id, stake_user=stake_user)
@@ -359,9 +334,7 @@ async def upsert_payment_data(session: AsyncSession, telegram_id: int,
 
 
 async def clear_payment_field(session: AsyncSession, telegram_id: int, field: str) -> None:
-    result = await session.execute(
-        select(PaymentData).where(PaymentData.telegram_id == telegram_id)
-    )
+    result = await session.execute(select(PaymentData).where(PaymentData.telegram_id == telegram_id))
     pd = result.scalar_one_or_none()
     if pd:
         setattr(pd, field, None)
@@ -377,3 +350,84 @@ async def list_payment_data(session: AsyncSession, page: int = 0, page_size: int
         .order_by(PaymentData.telegram_id).offset(page * page_size).limit(page_size)
     )
     return list(result.scalars().all()), total
+
+
+# ─── Slot system ──────────────────────────────────────────────────────────────
+
+async def get_or_create_user_slot(
+    session: AsyncSession, telegram_id: int, slot_name: str, spins: int
+) -> UserSlot:
+    result = await session.execute(select(UserSlot).where(UserSlot.telegram_id == telegram_id))
+    us = result.scalar_one_or_none()
+    today = date.today()
+    if not us:
+        us = UserSlot(telegram_id=telegram_id, slot_name=slot_name, spins=spins, slot_date=today)
+        session.add(us)
+        await session.commit()
+        await session.refresh(us)
+    return us
+
+
+async def update_user_slot(session: AsyncSession, telegram_id: int, slot_name: str, spins: int) -> UserSlot:
+    result = await session.execute(select(UserSlot).where(UserSlot.telegram_id == telegram_id))
+    us = result.scalar_one_or_none()
+    today = date.today()
+    if not us:
+        us = UserSlot(telegram_id=telegram_id, slot_name=slot_name, spins=spins, slot_date=today)
+        session.add(us)
+    else:
+        us.slot_name = slot_name
+        us.spins     = spins
+        us.slot_date = today
+    await session.commit()
+    await session.refresh(us)
+    return us
+
+
+async def get_user_slot(session: AsyncSession, telegram_id: int) -> Optional[UserSlot]:
+    result = await session.execute(select(UserSlot).where(UserSlot.telegram_id == telegram_id))
+    return result.scalar_one_or_none()
+
+
+async def get_global_slot(session: AsyncSession) -> Optional[GlobalSlot]:
+    result = await session.execute(select(GlobalSlot).limit(1))
+    return result.scalar_one_or_none()
+
+
+async def set_global_slot(session: AsyncSession, slot_name: str) -> GlobalSlot:
+    result = await session.execute(select(GlobalSlot).limit(1))
+    gs = result.scalar_one_or_none()
+    if not gs:
+        gs = GlobalSlot(slot_name=slot_name, updated_at=datetime.utcnow())
+        session.add(gs)
+    else:
+        gs.slot_name  = slot_name
+        gs.updated_at = datetime.utcnow()
+    await session.commit()
+    await session.refresh(gs)
+    return gs
+
+
+async def get_all_user_slot_ids(session: AsyncSession) -> list[int]:
+    result = await session.execute(select(UserSlot.telegram_id))
+    return list(result.scalars().all())
+
+
+# ─── Bet posts ────────────────────────────────────────────────────────────────
+
+async def create_bet_post(session: AsyncSession, text: str, admin_id: int,
+                           media_id: Optional[str] = None,
+                           media_type: Optional[str] = None) -> BetPost:
+    bp = BetPost(text=text, media_id=media_id, media_type=media_type, admin_id=admin_id)
+    session.add(bp)
+    await session.commit()
+    await session.refresh(bp)
+    logger.info("Bet post created | id=%s | admin=%s", bp.id, admin_id)
+    return bp
+
+
+async def list_bet_posts(session: AsyncSession, limit: int = 20) -> list[BetPost]:
+    result = await session.execute(
+        select(BetPost).order_by(BetPost.created_at.desc()).limit(limit)
+    )
+    return list(result.scalars().all())

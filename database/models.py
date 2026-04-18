@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, date
 from sqlalchemy import (
-    BigInteger, Boolean, Column, DateTime,
-    Float, ForeignKey, Integer, String, func,
+    BigInteger, Boolean, Column, Date, DateTime,
+    Float, ForeignKey, Integer, String, Text, func,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
@@ -12,7 +12,6 @@ class Base(DeclarativeBase):
 
 class User(Base):
     __tablename__ = "users"
-
     id             = Column(Integer, primary_key=True)
     telegram_id    = Column(BigInteger, unique=True, nullable=False, index=True)
     username       = Column(String(255), nullable=True)
@@ -20,19 +19,17 @@ class User(Base):
     lang           = Column(String(5), default="", nullable=False)
     is_banned      = Column(Boolean, default=False, nullable=False)
     loot_banned    = Column(Boolean, default=False, nullable=False)
-    last_review_at = Column(DateTime, nullable=True)
-    last_loot_at   = Column(DateTime, nullable=True)
-    # Payment change cooldowns (1 week each)
+    last_review_at         = Column(DateTime, nullable=True)
+    last_loot_at           = Column(DateTime, nullable=True)
     last_stake_change_at   = Column(DateTime, nullable=True)
     last_binance_change_at = Column(DateTime, nullable=True)
     created_at     = Column(DateTime, default=datetime.utcnow, server_default=func.now())
-
     payment = relationship("PaymentData", back_populates="user", uselist=False)
+    slot    = relationship("UserSlot", back_populates="user", uselist=False)
 
 
 class Contest(Base):
     __tablename__ = "contests"
-
     id            = Column(Integer, primary_key=True)
     title         = Column(String(1024), nullable=False)
     prize_text    = Column(String(512), nullable=False)
@@ -41,19 +38,16 @@ class Contest(Base):
     status        = Column(String(20), default="active", nullable=False)
     created_at    = Column(DateTime, default=datetime.utcnow, server_default=func.now())
     finished_at   = Column(DateTime, nullable=True)
-
     participants = relationship("ContestParticipant", back_populates="contest")
     winners      = relationship("Winner", back_populates="contest")
 
 
 class ContestParticipant(Base):
     __tablename__ = "contest_participants"
-
     id          = Column(Integer, primary_key=True)
     contest_id  = Column(Integer, ForeignKey("contests.id"), nullable=False)
     telegram_id = Column(BigInteger, nullable=False, index=True)
     created_at  = Column(DateTime, default=datetime.utcnow, server_default=func.now())
-
     contest = relationship("Contest", back_populates="participants")
     user    = relationship("User", foreign_keys=[telegram_id],
                            primaryjoin="ContestParticipant.telegram_id == User.telegram_id")
@@ -61,12 +55,10 @@ class ContestParticipant(Base):
 
 class Winner(Base):
     __tablename__ = "winners"
-
     id          = Column(Integer, primary_key=True)
     contest_id  = Column(Integer, ForeignKey("contests.id"), nullable=False)
     telegram_id = Column(BigInteger, nullable=False, index=True)
     created_at  = Column(DateTime, default=datetime.utcnow, server_default=func.now())
-
     contest = relationship("Contest", back_populates="winners")
     user    = relationship("User", foreign_keys=[telegram_id],
                            primaryjoin="Winner.telegram_id == User.telegram_id")
@@ -74,11 +66,39 @@ class Winner(Base):
 
 class PaymentData(Base):
     __tablename__ = "payment_data"
-
     id          = Column(Integer, primary_key=True)
     telegram_id = Column(BigInteger, ForeignKey("users.telegram_id"), unique=True, nullable=False)
     binance_id  = Column(String(256), nullable=True)
     stake_user  = Column(String(256), nullable=True)
     updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
     user = relationship("User", back_populates="payment")
+
+
+class UserSlot(Base):
+    """Per-user daily slot."""
+    __tablename__ = "user_slots"
+    id          = Column(Integer, primary_key=True)
+    telegram_id = Column(BigInteger, ForeignKey("users.telegram_id"), unique=True, nullable=False)
+    slot_name   = Column(String(256), nullable=False, default="")
+    spins       = Column(Integer, nullable=False, default=69)
+    slot_date   = Column(Date, nullable=False, default=date.today)
+    user = relationship("User", back_populates="slot")
+
+
+class GlobalSlot(Base):
+    """Single-row table — today's global slot of the day."""
+    __tablename__ = "global_slot"
+    id         = Column(Integer, primary_key=True)
+    slot_name  = Column(String(256), nullable=False, default="")
+    updated_at = Column(DateTime, default=datetime.utcnow)
+
+
+class BetPost(Base):
+    """Admin-published bet content."""
+    __tablename__ = "bet_posts"
+    id         = Column(Integer, primary_key=True)
+    text       = Column(Text, nullable=False)
+    media_id   = Column(String(512), nullable=True)
+    media_type = Column(String(20),  nullable=True)   # "photo" | "video" | "document"
+    admin_id   = Column(BigInteger, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, server_default=func.now())
