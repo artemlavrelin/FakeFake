@@ -138,3 +138,15 @@ class RU:
         "🤹🏻 <b>Конкурс завершён</b>\n\n📌 {title}\n\n"
         "🏆 <b>Победители:</b>\n{winners}\n\nСпасибо за участие! 🍀"
     )
+
+    # Payment change cooldown
+    payment_cooldown_stake   = "⏳ Stake username можно менять раз в 7 дней. Осталось: <b>{d}д {h}ч</b>."
+    payment_cooldown_binance = "⏳ Binance ID можно менять раз в 7 дней. Осталось: <b>{d}д {h}ч</b>."
+
+    # Mod notification on payment change
+    payment_changed_moder = (
+        "✏️ <b>Изменение платёжных данных</b>\n\n"
+        "👤 @{username} | <code>{uid}</code> | ▫️{num}\n"
+        "🔧 Поле: <b>{field}</b>\n"
+        "📝 Новое значение: <code>{value}</code>"
+    )

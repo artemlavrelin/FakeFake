@@ -130,3 +130,15 @@ class EN:
         "🤹🏻 <b>Raffle finished</b>\n\n📌 {title}\n\n"
         "🏆 <b>Winners:</b>\n{winners}\n\nThanks for participating! 🍀"
     )
+
+    # Payment change cooldown
+    payment_cooldown_stake   = "⏳ Stake username can only be changed once every 7 days. Time left: <b>{d}d {h}h</b>."
+    payment_cooldown_binance = "⏳ Binance ID can only be changed once every 7 days. Time left: <b>{d}d {h}h</b>."
+
+    # Mod notification on payment change
+    payment_changed_moder = (
+        "✏️ <b>Payment data changed</b>\n\n"
+        "👤 @{username} | <code>{uid}</code> | ▫️{num}\n"
+        "🔧 Field: <b>{field}</b>\n"
+        "📝 New value: <code>{value}</code>"
+    )
