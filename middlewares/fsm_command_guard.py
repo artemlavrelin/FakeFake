@@ -1,6 +1,6 @@
 """
-If the user sends any bot command (/start, /admin…) while inside an FSM,
-clear the state so command handlers work normally instead of FSM catching them.
+Clears FSM state when a bot command is sent, so /start always works
+regardless of what FSM state the user is currently in.
 """
 from typing import Any, Awaitable, Callable
 
@@ -27,14 +27,17 @@ class FsmCommandGuardMiddleware(BaseMiddleware):
         if not text.startswith("/"):
             return await handler(event, data)
 
-        state: FSMContext = data.get("state")
-        if state:
-            current = await state.get_state()
-            if current is not None:
-                logger.debug(
-                    "FSM cleared by command | user=%s | state=%s | cmd=%s",
-                    event.from_user.id, current, text.split()[0],
-                )
-                await state.clear()
+        try:
+            state: FSMContext = data.get("state")
+            if state is not None:
+                current = await state.get_state()
+                if current is not None:
+                    logger.debug(
+                        "FSM cleared by command | user=%s | state=%s | cmd=%s",
+                        event.from_user.id, current, text.split()[0],
+                    )
+                    await state.clear()
+        except Exception as e:
+            logger.warning("FsmCommandGuard error (non-fatal) | %s", e)
 
         return await handler(event, data)
