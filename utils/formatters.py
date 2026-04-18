@@ -1,5 +1,5 @@
 from datetime import datetime
-from i18n import t
+from strings import t
 
 
 def format_winner(telegram_id: int, username: str | None, index: int) -> str:
