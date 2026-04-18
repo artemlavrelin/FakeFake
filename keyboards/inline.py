@@ -275,3 +275,47 @@ def group_draw_keyboard(bot_link: str) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.row(InlineKeyboardButton(text="🤖 Открыть бота", url=bot_link))
     return b.as_markup()
+
+
+# ─── Profile ──────────────────────────────────────────────────────────────────
+
+def profile_view_keyboard(has_social: bool) -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    if not has_social:
+        b.row(InlineKeyboardButton(text="✏️ Заполнить профиль", callback_data="profile:fill"))
+    b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="menu"))
+    return b.as_markup()
+
+
+# ─── Tasks ────────────────────────────────────────────────────────────────────
+
+def tasks_menu_keyboard() -> InlineKeyboardMarkup:
+    b = InlineKeyboardBuilder()
+    b.row(InlineKeyboardButton(text="🟢 Принимать задания", callback_data="tasks:get"))
+    b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="menu"))
+    return b.as_markup()
+
+
+# ─── Updated main menu with new buttons ───────────────────────────────────────
+
+def main_menu_keyboard_v11(lang: str) -> InlineKeyboardMarkup:
+    from strings import t
+    b = InlineKeyboardBuilder()
+    b.row(InlineKeyboardButton(text=t(lang, "btn_raffle"),  callback_data="raffle"))
+    b.row(InlineKeyboardButton(text=t(lang, "btn_report"),  callback_data="report"))
+    b.row(
+        InlineKeyboardButton(text=t(lang, "btn_stake"),   callback_data="atm:stake"),
+        InlineKeyboardButton(text=t(lang, "btn_binance"), callback_data="atm:binance"),
+    )
+    b.row(
+        InlineKeyboardButton(text="📊 МОЯ СТАТИСТИКА", callback_data="my_stats_full"),
+        InlineKeyboardButton(text="👥 Общая",           callback_data="public_stats"),
+    )
+    b.row(
+        InlineKeyboardButton(text="🥼 ПРОФИЛЬ",  callback_data="profile"),
+        InlineKeyboardButton(text="🃏 ЗАДАНИЯ",  callback_data="tasks"),
+    )
+    b.row(InlineKeyboardButton(text=t(lang, "btn_loot"), callback_data="loot"))
+    flag = "🇬🇧 EN" if lang == "ru" else "🇷🇺 RU"
+    b.row(InlineKeyboardButton(text=flag, callback_data="switch_lang"))
+    return b.as_markup()
