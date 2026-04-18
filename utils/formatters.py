@@ -9,10 +9,8 @@ def format_winner(telegram_id: int, username: str | None, index: int) -> str:
     return f"{index}. {s[:4]}****"
 
 
-def stats_bar(
-    time_str: str, participants: int, winners_count: int,
-    prize_text: str, chance_pct: float,
-) -> str:
+def stats_bar(time_str: str, participants: int, winners_count: int,
+              prize_text: str, chance_pct: float) -> str:
     prize = prize_text[:20] if len(prize_text) > 20 else prize_text
     return f"⏳ {time_str}   👥 {participants}   🏆 {winners_count}   💰 {prize}   📊 {chance_pct:.1f}%"
 
@@ -24,15 +22,13 @@ def calc_chance(winners_count: int, participants: int, is_participant: bool) -> 
 
 
 def format_personal_stats(stats: dict, user_number: int | None, lang: str) -> str:
-    participations = stats["participations"]
     wins           = stats["wins"]
+    participations = stats["participations"]
     prize_sum      = stats["prize_sum"]
-    last_win: datetime | None = stats["last_win"]
-
+    last_win       = stats["last_win"]
     num_str      = f"▫️{user_number}" if user_number else ""
     last_win_str = last_win.strftime("%d.%m.%Y") if last_win else "—"
     prize_str    = f"${prize_sum:.0f}" if prize_sum > 0 else "—"
-
     lines = [
         t(lang, "stats_header"),
         f"<b>{num_str}</b>",
@@ -54,8 +50,7 @@ def format_personal_stats(stats: dict, user_number: int | None, lang: str) -> st
 def format_public_stats(stats: dict, lang: str) -> str:
     prize_str = f"${stats['total_prize_sum']:.0f}" if stats["total_prize_sum"] > 0 else "—"
     return "\n".join([
-        t(lang, "public_stats_header"),
-        "",
+        t(lang, "public_stats_header"), "",
         t(lang, "public_finished",     n=stats["finished_count"]),
         t(lang, "public_participants", n=stats["total_participants"]),
         t(lang, "public_winners",      n=stats["total_winners"]),
