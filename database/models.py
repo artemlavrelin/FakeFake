@@ -17,9 +17,11 @@ class User(Base):
     telegram_id    = Column(BigInteger, unique=True, nullable=False, index=True)
     username       = Column(String(255), nullable=True)
     user_number    = Column(Integer, unique=True, nullable=True)
-    lang           = Column(String(5), default="ru", nullable=False)   # "ru" | "en"
+    lang           = Column(String(5), default="", nullable=False)
     is_banned      = Column(Boolean, default=False, nullable=False)
-    last_review_at = Column(DateTime, nullable=True)                   # cooldown tracking
+    loot_banned    = Column(Boolean, default=False, nullable=False)  # /loot admin cmd
+    last_review_at = Column(DateTime, nullable=True)
+    last_loot_at   = Column(DateTime, nullable=True)
     created_at     = Column(DateTime, default=datetime.utcnow, server_default=func.now())
 
     payment = relationship("PaymentData", back_populates="user", uselist=False)
@@ -50,10 +52,8 @@ class ContestParticipant(Base):
     created_at  = Column(DateTime, default=datetime.utcnow, server_default=func.now())
 
     contest = relationship("Contest", back_populates="participants")
-    user    = relationship(
-        "User", foreign_keys=[telegram_id],
-        primaryjoin="ContestParticipant.telegram_id == User.telegram_id",
-    )
+    user    = relationship("User", foreign_keys=[telegram_id],
+                           primaryjoin="ContestParticipant.telegram_id == User.telegram_id")
 
 
 class Winner(Base):
@@ -65,10 +65,8 @@ class Winner(Base):
     created_at  = Column(DateTime, default=datetime.utcnow, server_default=func.now())
 
     contest = relationship("Contest", back_populates="winners")
-    user    = relationship(
-        "User", foreign_keys=[telegram_id],
-        primaryjoin="Winner.telegram_id == User.telegram_id",
-    )
+    user    = relationship("User", foreign_keys=[telegram_id],
+                           primaryjoin="Winner.telegram_id == User.telegram_id")
 
 
 class PaymentData(Base):

@@ -12,8 +12,6 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 
-# ─── User number ──────────────────────────────────────────────────────────────
-
 async def _generate_unique_number(session: AsyncSession) -> int:
     used_r = await session.execute(
         select(User.user_number).where(User.user_number.isnot(None))
@@ -25,9 +23,7 @@ async def _generate_unique_number(session: AsyncSession) -> int:
 
 # ─── Users ────────────────────────────────────────────────────────────────────
 
-async def get_or_create_user(
-    session: AsyncSession, telegram_id: int, username: Optional[str]
-) -> User:
+async def get_or_create_user(session: AsyncSession, telegram_id: int, username: Optional[str]) -> User:
     result = await session.execute(
         select(User).where(User.telegram_id == telegram_id)
         .options(selectinload(User.payment))
@@ -35,8 +31,7 @@ async def get_or_create_user(
     user = result.scalar_one_or_none()
     if not user:
         number = await _generate_unique_number(session)
-        user = User(telegram_id=telegram_id, username=username,
-                    user_number=number, lang="")   # empty = needs language selection
+        user   = User(telegram_id=telegram_id, username=username, user_number=number, lang="")
         session.add(user)
         await session.commit()
         await session.refresh(user)
@@ -54,9 +49,9 @@ async def get_or_create_user(
     return user
 
 
-async def set_lang(session: AsyncSession, telegram_id: int, lang: str) -> User:
+async def set_lang(session: AsyncSession, telegram_id: int, lang: str) -> Optional[User]:
     result = await session.execute(select(User).where(User.telegram_id == telegram_id))
-    user = result.scalar_one_or_none()
+    user   = result.scalar_one_or_none()
     if user:
         user.lang = lang
         await session.commit()
@@ -73,11 +68,21 @@ async def get_user(session: AsyncSession, telegram_id: int) -> Optional[User]:
 
 async def set_ban(session: AsyncSession, telegram_id: int, banned: bool) -> Optional[User]:
     result = await session.execute(select(User).where(User.telegram_id == telegram_id))
-    user = result.scalar_one_or_none()
+    user   = result.scalar_one_or_none()
     if user:
         user.is_banned = banned
         await session.commit()
         logger.info("User %s | telegram_id=%s", "banned" if banned else "unbanned", telegram_id)
+    return user
+
+
+async def set_loot_ban(session: AsyncSession, telegram_id: int, banned: bool) -> Optional[User]:
+    result = await session.execute(select(User).where(User.telegram_id == telegram_id))
+    user   = result.scalar_one_or_none()
+    if user:
+        user.loot_banned = banned
+        await session.commit()
+        logger.info("Loot ban=%s | telegram_id=%s", banned, telegram_id)
     return user
 
 
@@ -95,33 +100,30 @@ async def get_all_user_ids(session: AsyncSession) -> list[int]:
     return list(result.scalars().all())
 
 
-# ─── Review cooldown ──────────────────────────────────────────────────────────
+# ─── Cooldowns ────────────────────────────────────────────────────────────────
 
-async def check_review_cooldown(
-    session: AsyncSession, telegram_id: int, cooldown_hours: int
+async def check_cooldown(
+    session: AsyncSession, telegram_id: int, field: str, hours: int
 ) -> tuple[bool, Optional[timedelta]]:
-    """
-    Returns (can_review, remaining_time).
-    can_review=True if cooldown has passed or never reviewed.
-    """
-    result = await session.execute(
-        select(User.last_review_at).where(User.telegram_id == telegram_id)
-    )
-    last = result.scalar_one_or_none()
+    result = await session.execute(select(User).where(User.telegram_id == telegram_id))
+    user   = result.scalar_one_or_none()
+    if not user:
+        return True, None
+    last     = getattr(user, field, None)
     if not last:
         return True, None
     elapsed  = datetime.utcnow() - last
-    cooldown = timedelta(hours=cooldown_hours)
+    cooldown = timedelta(hours=hours)
     if elapsed >= cooldown:
         return True, None
     return False, cooldown - elapsed
 
 
-async def set_last_review(session: AsyncSession, telegram_id: int) -> None:
+async def set_timestamp(session: AsyncSession, telegram_id: int, field: str) -> None:
     result = await session.execute(select(User).where(User.telegram_id == telegram_id))
-    user = result.scalar_one_or_none()
+    user   = result.scalar_one_or_none()
     if user:
-        user.last_review_at = datetime.utcnow()
+        setattr(user, field, datetime.utcnow())
         await session.commit()
 
 
@@ -135,7 +137,7 @@ async def get_user_stats(session: AsyncSession, telegram_id: int) -> dict:
         .join(Winner, Winner.contest_id == Contest.id)
         .where(Winner.telegram_id == telegram_id)
     )
-    last_r  = await session.execute(
+    last_r = await session.execute(
         select(Winner.created_at).where(Winner.telegram_id == telegram_id)
         .order_by(Winner.created_at.desc()).limit(1)
     )
@@ -146,8 +148,6 @@ async def get_user_stats(session: AsyncSession, telegram_id: int) -> dict:
         "last_win":       last_r.scalar_one_or_none(),
     }
 
-
-# ─── Public statistics ────────────────────────────────────────────────────────
 
 async def get_public_stats(session: AsyncSession) -> dict:
     fr = await session.execute(select(func.count()).where(Contest.status == "finished"))
@@ -163,8 +163,6 @@ async def get_public_stats(session: AsyncSession) -> dict:
         "total_prize_sum":    float(sr.scalar() or 0),
     }
 
-
-# ─── Top lists ────────────────────────────────────────────────────────────────
 
 async def get_top_winners(session: AsyncSession, limit: int = 10) -> list[dict]:
     result = await session.execute(
@@ -207,10 +205,8 @@ async def get_active_contest(session: AsyncSession) -> Optional[Contest]:
     return result.scalar_one_or_none()
 
 
-async def create_contest(
-    session: AsyncSession, title: str, prize_text: str,
-    prize_amount: float, winners_count: int,
-) -> Contest:
+async def create_contest(session: AsyncSession, title: str, prize_text: str,
+                         prize_amount: float, winners_count: int) -> Contest:
     contest = Contest(title=title, prize_text=prize_text,
                       prize_amount=prize_amount, winners_count=winners_count, status="active")
     session.add(contest)
@@ -243,8 +239,6 @@ async def get_finished_contests(session: AsyncSession, limit: int = 10) -> list[
     )
     return list(result.scalars().all())
 
-
-# ─── Participants ─────────────────────────────────────────────────────────────
 
 async def is_participant(session: AsyncSession, contest_id: int, telegram_id: int) -> bool:
     result = await session.execute(
@@ -279,25 +273,19 @@ async def get_all_participants(session: AsyncSession, contest_id: int) -> list[C
     return list(result.scalars().all())
 
 
-# ─── Draw ─────────────────────────────────────────────────────────────────────
-
 async def draw_winners(session: AsyncSession, contest: Contest) -> tuple[list[Winner], int]:
     participants = await get_all_participants(session, contest.id)
     total  = len(participants)
     actual = min(contest.winners_count, total)
-
     if actual < contest.winners_count:
         logger.warning("Fail-safe draw | contest_id=%s | requested=%s | available=%s",
                        contest.id, contest.winners_count, total)
-
     chosen = random.sample(participants, actual)
     for p in chosen:
         session.add(Winner(contest_id=contest.id, telegram_id=p.telegram_id))
-
     contest.status = "finished"
     contest.finished_at = datetime.utcnow()
     await session.commit()
-
     result = await session.execute(
         select(Winner).where(Winner.contest_id == contest.id)
         .options(selectinload(Winner.user).selectinload(User.payment))
@@ -316,10 +304,9 @@ async def get_payment_data(session: AsyncSession, telegram_id: int) -> Optional[
     return result.scalar_one_or_none()
 
 
-async def upsert_payment_data(
-    session: AsyncSession, telegram_id: int,
-    binance_id: Optional[str] = None, stake_user: Optional[str] = None,
-) -> PaymentData:
+async def upsert_payment_data(session: AsyncSession, telegram_id: int,
+                               binance_id: Optional[str] = None,
+                               stake_user: Optional[str] = None) -> PaymentData:
     result = await session.execute(
         select(PaymentData).where(PaymentData.telegram_id == telegram_id)
     )
@@ -335,14 +322,10 @@ async def upsert_payment_data(
         pd.updated_at = datetime.utcnow()
     await session.commit()
     await session.refresh(pd)
-    logger.info("Payment saved | telegram_id=%s", telegram_id)
     return pd
 
 
-async def clear_payment_field(
-    session: AsyncSession, telegram_id: int, field: str
-) -> None:
-    """Set a specific payment field to None."""
+async def clear_payment_field(session: AsyncSession, telegram_id: int, field: str) -> None:
     result = await session.execute(
         select(PaymentData).where(PaymentData.telegram_id == telegram_id)
     )
@@ -351,18 +334,13 @@ async def clear_payment_field(
         setattr(pd, field, None)
         pd.updated_at = datetime.utcnow()
         await session.commit()
-        logger.info("Payment field cleared | telegram_id=%s | field=%s", telegram_id, field)
 
 
-async def list_payment_data(
-    session: AsyncSession, page: int = 0, page_size: int = 15
-) -> tuple[list[PaymentData], int]:
+async def list_payment_data(session: AsyncSession, page: int = 0, page_size: int = 15) -> tuple[list[PaymentData], int]:
     count_r = await session.execute(select(func.count(PaymentData.id)))
     total   = count_r.scalar() or 0
     result  = await session.execute(
-        select(PaymentData)
-        .options(selectinload(PaymentData.user))
-        .order_by(PaymentData.telegram_id)
-        .offset(page * page_size).limit(page_size)
+        select(PaymentData).options(selectinload(PaymentData.user))
+        .order_by(PaymentData.telegram_id).offset(page * page_size).limit(page_size)
     )
     return list(result.scalars().all()), total
