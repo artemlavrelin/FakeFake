@@ -3,8 +3,6 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from i18n import t
 
 
-# ─── Language picker ──────────────────────────────────────────────────────────
-
 def lang_keyboard() -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -14,21 +12,19 @@ def lang_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-# ─── Main menu ────────────────────────────────────────────────────────────────
-
 def main_menu_keyboard(lang: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=t(lang, "btn_raffle"),       callback_data="raffle"))
-    builder.row(InlineKeyboardButton(text=t(lang, "btn_report"),       callback_data="report"))
+    builder.row(InlineKeyboardButton(text=t(lang, "btn_raffle"),  callback_data="raffle"))
+    builder.row(InlineKeyboardButton(text=t(lang, "btn_report"),  callback_data="report"))
+    builder.row(
+        InlineKeyboardButton(text=t(lang, "btn_stake"),   callback_data="atm:stake"),
+        InlineKeyboardButton(text=t(lang, "btn_binance"), callback_data="atm:binance"),
+    )
     builder.row(
         InlineKeyboardButton(text=t(lang, "btn_my_stats"),    callback_data="my_stats"),
         InlineKeyboardButton(text=t(lang, "btn_public_stats"), callback_data="public_stats"),
     )
-    builder.row(
-        InlineKeyboardButton(text=t(lang, "btn_atm"),     callback_data="atm"),
-        InlineKeyboardButton(text=t(lang, "btn_reviews"), callback_data="reviews"),
-    )
-    # Language switch
+    builder.row(InlineKeyboardButton(text=t(lang, "btn_loot"), callback_data="loot"))
     flag = "🇬🇧 EN" if lang == "ru" else "🇷🇺 RU"
     builder.row(InlineKeyboardButton(text=flag, callback_data="switch_lang"))
     return builder.as_markup()
@@ -37,6 +33,12 @@ def main_menu_keyboard(lang: str) -> InlineKeyboardMarkup:
 def back_to_menu_keyboard(lang: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text=t(lang, "btn_back"), callback_data="menu"))
+    return builder.as_markup()
+
+
+def cancel_keyboard(lang: str = "ru", back_cb: str = "cancel_fsm") -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text=t(lang, "btn_cancel"), callback_data=back_cb))
     return builder.as_markup()
 
 
@@ -64,12 +66,13 @@ def participate_confirm_keyboard(lang: str, contest_id: int) -> InlineKeyboardMa
     return builder.as_markup()
 
 
-# ─── Report ───────────────────────────────────────────────────────────────────
+# ─── Report + Reviews (merged) ────────────────────────────────────────────────
 
 def report_keyboard(lang: str, channel_url: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=t(lang, "btn_go"),   url=channel_url))
-    builder.row(InlineKeyboardButton(text=t(lang, "btn_back"), callback_data="menu"))
+    builder.row(InlineKeyboardButton(text=t(lang, "btn_go"),         url=channel_url))
+    builder.row(InlineKeyboardButton(text=t(lang, "btn_leave_review"), callback_data="review:start"))
+    builder.row(InlineKeyboardButton(text=t(lang, "btn_back"),        callback_data="menu"))
     return builder.as_markup()
 
 
@@ -85,25 +88,13 @@ def public_stats_keyboard(lang: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def top_list_keyboard(lang: str, back_cb: str = "public_stats") -> InlineKeyboardMarkup:
+def top_list_keyboard(lang: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=t(lang, "btn_back"), callback_data=back_cb))
+    builder.row(InlineKeyboardButton(text=t(lang, "btn_back"), callback_data="public_stats"))
     return builder.as_markup()
 
 
-# ─── ATM hub ──────────────────────────────────────────────────────────────────
-
-def atm_keyboard(lang: str) -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text=t(lang, "btn_stake"),   callback_data="atm:stake"),
-        InlineKeyboardButton(text=t(lang, "btn_binance"), callback_data="atm:binance"),
-    )
-    builder.row(InlineKeyboardButton(text=t(lang, "btn_back"), callback_data="menu"))
-    return builder.as_markup()
-
-
-# ─── Stake section ────────────────────────────────────────────────────────────
+# ─── Stake ────────────────────────────────────────────────────────────────────
 
 def stake_keyboard(lang: str, stake_url: str, has_data: bool) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
@@ -115,7 +106,7 @@ def stake_keyboard(lang: str, stake_url: str, has_data: bool) -> InlineKeyboardM
         )
     else:
         builder.row(InlineKeyboardButton(text=t(lang, "btn_edit"), callback_data="stake:edit"))
-    builder.row(InlineKeyboardButton(text=t(lang, "btn_back"), callback_data="atm"))
+    builder.row(InlineKeyboardButton(text=t(lang, "btn_back"), callback_data="menu"))
     return builder.as_markup()
 
 
@@ -128,7 +119,7 @@ def stake_delete_confirm_keyboard(lang: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-# ─── Binance section ──────────────────────────────────────────────────────────
+# ─── Binance ──────────────────────────────────────────────────────────────────
 
 def binance_keyboard(lang: str, binance_url: str, has_data: bool) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
@@ -140,7 +131,7 @@ def binance_keyboard(lang: str, binance_url: str, has_data: bool) -> InlineKeybo
         )
     else:
         builder.row(InlineKeyboardButton(text=t(lang, "btn_edit"), callback_data="binance:edit"))
-    builder.row(InlineKeyboardButton(text=t(lang, "btn_back"), callback_data="atm"))
+    builder.row(InlineKeyboardButton(text=t(lang, "btn_back"), callback_data="menu"))
     return builder.as_markup()
 
 
@@ -153,20 +144,43 @@ def binance_delete_confirm_keyboard(lang: str) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-# ─── Reviews ──────────────────────────────────────────────────────────────────
+# ─── Loot ─────────────────────────────────────────────────────────────────────
 
-def reviews_keyboard(lang: str) -> InlineKeyboardMarkup:
+def loot_no_data_keyboard(lang: str, stake_url: str, binance_url: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=t(lang, "btn_leave_review"), callback_data="review:start"))
-    builder.row(InlineKeyboardButton(text=t(lang, "btn_back"),         callback_data="menu"))
+    builder.row(
+        InlineKeyboardButton(text="🤞🏻 Stake",   url=stake_url),
+        InlineKeyboardButton(text="🟡 Binance", url=binance_url),
+    )
+    builder.row(InlineKeyboardButton(text=t(lang, "btn_back"), callback_data="menu"))
     return builder.as_markup()
 
 
-# ─── FSM cancel ───────────────────────────────────────────────────────────────
-
-def cancel_keyboard(lang: str, back_cb: str = "cancel_fsm") -> InlineKeyboardMarkup:
+def loot_start_keyboard(lang: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text=t(lang, "btn_cancel"), callback_data=back_cb))
+    builder.row(InlineKeyboardButton(text=t(lang, "btn_loot_start"), callback_data="loot:start"))
+    builder.row(InlineKeyboardButton(text=t(lang, "btn_back"),       callback_data="menu"))
+    return builder.as_markup()
+
+
+def loot_roll_keyboard(lang: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text=t(lang, "btn_loot_roll"), callback_data="loot:roll"))
+    return builder.as_markup()
+
+
+# ─── Social ───────────────────────────────────────────────────────────────────
+
+def social_keyboard(fb: str, tw: str, ig: str, th: str) -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="Facebook",   url=fb),
+        InlineKeyboardButton(text="Twitter",    url=tw),
+    )
+    builder.row(
+        InlineKeyboardButton(text="Instagram",  url=ig),
+        InlineKeyboardButton(text="Threads",    url=th),
+    )
     return builder.as_markup()
 
 
@@ -234,7 +248,7 @@ def payments_page_keyboard(page: int, total_pages: int) -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-# ─── Group buttons ────────────────────────────────────────────────────────────
+# ─── Group ────────────────────────────────────────────────────────────────────
 
 def group_contest_keyboard(bot_link: str, contest_id: int) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
