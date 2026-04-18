@@ -1,6 +1,6 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from i18n import t
+from strings import t
 
 
 def lang_keyboard() -> InlineKeyboardMarkup:
