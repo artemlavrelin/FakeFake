@@ -82,7 +82,6 @@ async def set_loot_ban(session: AsyncSession, telegram_id: int, banned: bool) ->
     if user:
         user.loot_banned = banned
         await session.commit()
-        logger.info("Loot ban=%s | telegram_id=%s", banned, telegram_id)
     return user
 
 
@@ -100,7 +99,7 @@ async def get_all_user_ids(session: AsyncSession) -> list[int]:
     return list(result.scalars().all())
 
 
-# ─── Cooldowns ────────────────────────────────────────────────────────────────
+# ─── Cooldowns (generic) ──────────────────────────────────────────────────────
 
 async def check_cooldown(
     session: AsyncSession, telegram_id: int, field: str, hours: int
@@ -127,6 +126,40 @@ async def set_timestamp(session: AsyncSession, telegram_id: int, field: str) -> 
         await session.commit()
 
 
+# ─── Payment change cooldown (1 week) ────────────────────────────────────────
+
+async def check_payment_change_cooldown(
+    session: AsyncSession, telegram_id: int, field: str, days: int
+) -> tuple[bool, Optional[timedelta]]:
+    """
+    field: "last_stake_change_at" | "last_binance_change_at"
+    Returns (can_change, remaining) — admins bypass this check externally.
+    """
+    result = await session.execute(select(User).where(User.telegram_id == telegram_id))
+    user   = result.scalar_one_or_none()
+    if not user:
+        return True, None
+    last     = getattr(user, field, None)
+    if not last:
+        return True, None
+    elapsed  = datetime.utcnow() - last
+    cooldown = timedelta(days=days)
+    if elapsed >= cooldown:
+        return True, None
+    return False, cooldown - elapsed
+
+
+async def set_payment_change_timestamp(
+    session: AsyncSession, telegram_id: int, field: str
+) -> None:
+    """Mark that a payment field was just changed (for cooldown tracking)."""
+    result = await session.execute(select(User).where(User.telegram_id == telegram_id))
+    user   = result.scalar_one_or_none()
+    if user:
+        setattr(user, field, datetime.utcnow())
+        await session.commit()
+
+
 # ─── User statistics ──────────────────────────────────────────────────────────
 
 async def get_user_stats(session: AsyncSession, telegram_id: int) -> dict:
@@ -137,7 +170,7 @@ async def get_user_stats(session: AsyncSession, telegram_id: int) -> dict:
         .join(Winner, Winner.contest_id == Contest.id)
         .where(Winner.telegram_id == telegram_id)
     )
-    last_r = await session.execute(
+    last_r  = await session.execute(
         select(Winner.created_at).where(Winner.telegram_id == telegram_id)
         .order_by(Winner.created_at.desc()).limit(1)
     )

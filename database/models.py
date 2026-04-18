@@ -19,9 +19,12 @@ class User(Base):
     user_number    = Column(Integer, unique=True, nullable=True)
     lang           = Column(String(5), default="", nullable=False)
     is_banned      = Column(Boolean, default=False, nullable=False)
-    loot_banned    = Column(Boolean, default=False, nullable=False)  # /loot admin cmd
+    loot_banned    = Column(Boolean, default=False, nullable=False)
     last_review_at = Column(DateTime, nullable=True)
     last_loot_at   = Column(DateTime, nullable=True)
+    # Payment change cooldowns (1 week each)
+    last_stake_change_at   = Column(DateTime, nullable=True)
+    last_binance_change_at = Column(DateTime, nullable=True)
     created_at     = Column(DateTime, default=datetime.utcnow, server_default=func.now())
 
     payment = relationship("PaymentData", back_populates="user", uselist=False)
