@@ -34,3 +34,7 @@ class LootFSM(StatesGroup):
     waiting_binance_screenshot = State()
     waiting_stake_screenshot   = State()
     confirm                    = State()
+
+
+class AddBetFSM(StatesGroup):
+    waiting_content = State()
