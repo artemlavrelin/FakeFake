@@ -6,8 +6,8 @@ from strings import t
 def lang_keyboard() -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.row(
-        InlineKeyboardButton(text="🌏 Русский", callback_data="set_lang:ru"),
-        InlineKeyboardButton(text="🌍 English", callback_data="set_lang:en"),
+        InlineKeyboardButton(text="🇷🇺 Русский", callback_data="set_lang:ru"),
+        InlineKeyboardButton(text="🇬🇧 English", callback_data="set_lang:en"),
     )
     return b.as_markup()
 
@@ -25,7 +25,7 @@ def main_menu_keyboard(lang: str) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text=t(lang, "btn_public_stats"), callback_data="public_stats"),
     )
     b.row(InlineKeyboardButton(text=t(lang, "btn_loot"), callback_data="loot"))
-    flag = "🇬🇧 EN" if lang == "ru" else "RU"
+    flag = "🇬🇧 EN" if lang == "ru" else "🇷🇺 RU"
     b.row(InlineKeyboardButton(text=flag, callback_data="switch_lang"))
     return b.as_markup()
 
@@ -265,15 +265,15 @@ def payments_page_keyboard(page: int, total_pages: int) -> InlineKeyboardMarkup:
 def group_contest_keyboard(bot_link: str, contest_id: int) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     b.row(
-        InlineKeyboardButton(text="⚡️ Участвовать",  callback_data=f"group_join:{contest_id}"),
-        InlineKeyboardButton(text="💥 Открыть бота", url=bot_link),
+        InlineKeyboardButton(text="🧲 Участвовать",  callback_data=f"group_join:{contest_id}"),
+        InlineKeyboardButton(text="🤖 Открыть бота", url=bot_link),
     )
     return b.as_markup()
 
 
 def group_draw_keyboard(bot_link: str) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
-    b.row(InlineKeyboardButton(text="💥 Открыть бота", url=bot_link))
+    b.row(InlineKeyboardButton(text="🤖 Открыть бота", url=bot_link))
     return b.as_markup()
 
 
@@ -282,7 +282,7 @@ def group_draw_keyboard(bot_link: str) -> InlineKeyboardMarkup:
 def profile_view_keyboard(has_social: bool) -> InlineKeyboardMarkup:
     b = InlineKeyboardBuilder()
     if not has_social:
-        b.row(InlineKeyboardButton(text="✍️ Заполнить профиль", callback_data="profile:fill"))
+        b.row(InlineKeyboardButton(text="✏️ Заполнить профиль", callback_data="profile:fill"))
     b.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="menu"))
     return b.as_markup()
 
@@ -316,6 +316,6 @@ def main_menu_keyboard_v11(lang: str) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🃏 ЗАДАНИЯ",  callback_data="tasks"),
     )
     b.row(InlineKeyboardButton(text=t(lang, "btn_loot"), callback_data="loot"))
-    flag = "🇬🇧 EN" if lang == "ru" else "RU"
+    flag = "🇬🇧 EN" if lang == "ru" else "🇷🇺 RU"
     b.row(InlineKeyboardButton(text=flag, callback_data="switch_lang"))
     return b.as_markup()
