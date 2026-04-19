@@ -2,7 +2,8 @@ import random
 from datetime import datetime, timedelta, date
 from typing import Optional
 
-from sqlalchemy import desc, func, select, and_
+from sqlalchemy import desc, func, select, and_, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -10,13 +11,15 @@ from database.models import (
     BetPost, Contest, ContestParticipant, GlobalSlot,
     PaymentData, Task, TaskComment, TaskLog,
     User, UserBalance, UserProfile, UserSlot, Winner, WithdrawalRequest,
+    STATUS_ICONS,
 )
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Which profile statuses count as "verified"
+VERIFIED_STATUSES = {"verified", "girl", "guy"}
 
-# ─── Unique number ────────────────────────────────────────────────────────────
 
 async def _generate_unique_number(session: AsyncSession) -> int:
     used_r = await session.execute(select(User.user_number).where(User.user_number.isnot(None)))
@@ -61,8 +64,10 @@ async def get_user(session: AsyncSession, telegram_id: int) -> Optional[User]:
 
 async def get_user_by_username(session: AsyncSession, username: str) -> Optional[User]:
     clean = username.lstrip("@")
-    result = await session.execute(select(User).where(User.username == clean)
-        .options(selectinload(User.payment), selectinload(User.profile), selectinload(User.balance)))
+    result = await session.execute(
+        select(User).where(User.username == clean)
+        .options(selectinload(User.payment), selectinload(User.profile), selectinload(User.balance))
+    )
     return result.scalar_one_or_none()
 
 
@@ -70,8 +75,7 @@ async def set_lang(session: AsyncSession, telegram_id: int, lang: str) -> Option
     result = await session.execute(select(User).where(User.telegram_id == telegram_id))
     user   = result.scalar_one_or_none()
     if user:
-        user.lang = lang
-        await session.commit()
+        user.lang = lang; await session.commit()
     return user
 
 
@@ -79,8 +83,7 @@ async def set_ban(session: AsyncSession, telegram_id: int, banned: bool) -> Opti
     result = await session.execute(select(User).where(User.telegram_id == telegram_id))
     user   = result.scalar_one_or_none()
     if user:
-        user.is_banned = banned
-        await session.commit()
+        user.is_banned = banned; await session.commit()
     return user
 
 
@@ -88,8 +91,7 @@ async def set_loot_ban(session: AsyncSession, telegram_id: int, banned: bool) ->
     result = await session.execute(select(User).where(User.telegram_id == telegram_id))
     user   = result.scalar_one_or_none()
     if user:
-        user.loot_banned = banned
-        await session.commit()
+        user.loot_banned = banned; await session.commit()
     return user
 
 
@@ -97,7 +99,7 @@ async def set_afk(session: AsyncSession, telegram_id: int, afk: bool) -> None:
     result = await session.execute(select(User).where(User.telegram_id == telegram_id))
     user   = result.scalar_one_or_none()
     if user:
-        user.is_afk   = afk
+        user.is_afk    = afk
         user.afk_since = datetime.utcnow() if afk else None
         await session.commit()
 
@@ -114,7 +116,8 @@ async def delete_user_completely(session: AsyncSession, telegram_id: int) -> boo
 
 async def list_users(session: AsyncSession) -> list[User]:
     result = await session.execute(
-        select(User).options(selectinload(User.payment), selectinload(User.balance))
+        select(User)
+        .options(selectinload(User.payment), selectinload(User.balance))
         .order_by(User.created_at)
     )
     return list(result.scalars().all())
@@ -151,8 +154,7 @@ async def set_timestamp(session: AsyncSession, telegram_id: int, field: str) -> 
     result = await session.execute(select(User).where(User.telegram_id == telegram_id))
     user   = result.scalar_one_or_none()
     if user:
-        setattr(user, field, datetime.utcnow())
-        await session.commit()
+        setattr(user, field, datetime.utcnow()); await session.commit()
 
 
 async def check_payment_change_cooldown(session: AsyncSession, telegram_id: int, field: str, days: int) -> tuple[bool, Optional[timedelta]]:
@@ -174,8 +176,7 @@ async def set_payment_change_timestamp(session: AsyncSession, telegram_id: int, 
     result = await session.execute(select(User).where(User.telegram_id == telegram_id))
     user   = result.scalar_one_or_none()
     if user:
-        setattr(user, field, datetime.utcnow())
-        await session.commit()
+        setattr(user, field, datetime.utcnow()); await session.commit()
 
 
 # ─── Profile ──────────────────────────────────────────────────────────────────
@@ -184,7 +185,7 @@ async def get_or_create_profile(session: AsyncSession, telegram_id: int) -> User
     result = await session.execute(select(UserProfile).where(UserProfile.telegram_id == telegram_id))
     p = result.scalar_one_or_none()
     if not p:
-        p = UserProfile(telegram_id=telegram_id)
+        p = UserProfile(telegram_id=telegram_id, status="new")
         session.add(p)
         await session.commit()
         await session.refresh(p)
@@ -194,44 +195,70 @@ async def get_or_create_profile(session: AsyncSession, telegram_id: int) -> User
 async def save_profile(session: AsyncSession, telegram_id: int,
                         instagram: str, threads: str, facebook: str, twitter: str) -> UserProfile:
     p = await get_or_create_profile(session, telegram_id)
-    p.instagram  = instagram
-    p.threads    = threads
-    p.facebook   = facebook
-    p.twitter    = twitter
+    p.instagram  = instagram or None
+    p.threads    = threads or None
+    p.facebook   = facebook or None
+    p.twitter    = twitter or None
     p.status     = "pending"
     p.updated_at = datetime.utcnow()
     await session.commit()
     await session.refresh(p)
 
-    # Calculate bonus
-    filled = sum(1 for v in [instagram, threads, facebook, twitter] if v and v.strip())
-    bonus  = round(filled * 0.10, 2)
-    if bonus > 0 and not p.bonus_paid:
-        p.bonus_paid = True
-        await session.commit()
-        await add_balance(session, telegram_id, bonus)
+    if not p.bonus_paid:
+        filled = sum(1 for v in [instagram, threads, facebook, twitter] if v and v.strip())
+        bonus  = round(filled * 0.10, 2)
+        if bonus > 0:
+            p.bonus_paid = True
+            await session.commit()
+            await add_balance(session, telegram_id, bonus)
     return p
 
 
 async def set_profile_status(session: AsyncSession, telegram_id: int, status: str) -> Optional[UserProfile]:
     result = await session.execute(select(UserProfile).where(UserProfile.telegram_id == telegram_id))
     p = result.scalar_one_or_none()
-    if p:
+    if not p:
+        p = UserProfile(telegram_id=telegram_id, status=status)
+        session.add(p)
+    else:
         p.status = status
-        await session.commit()
+        p.updated_at = datetime.utcnow()
+    await session.commit()
     return p
 
 
 async def admin_update_profile(session: AsyncSession, telegram_id: int, **kwargs) -> Optional[UserProfile]:
     result = await session.execute(select(UserProfile).where(UserProfile.telegram_id == telegram_id))
     p = result.scalar_one_or_none()
-    if p:
-        for k, v in kwargs.items():
-            if hasattr(p, k):
-                setattr(p, k, v)
-        p.updated_at = datetime.utcnow()
-        await session.commit()
+    if not p:
+        p = UserProfile(telegram_id=telegram_id)
+        session.add(p)
+    for k, v in kwargs.items():
+        if hasattr(p, k):
+            setattr(p, k, v)
+    p.updated_at = datetime.utcnow()
+    await session.commit()
+    await session.refresh(p)
     return p
+
+
+def user_matches_access(user_status: str, access_level: str) -> bool:
+    """Return True if a user with the given status can access the task."""
+    if access_level == "all":
+        return True
+    if access_level == "new":
+        return user_status == "new"
+    if access_level == "pending":
+        return user_status == "pending"
+    if access_level == "verified":
+        return user_status in VERIFIED_STATUSES
+    if access_level == "no_fake":
+        return user_status != "fake"
+    if access_level == "girl_ver":
+        return user_status in ("girl", "verified")
+    if access_level == "guy_ver":
+        return user_status in ("guy", "verified")
+    return False
 
 
 # ─── Balance ──────────────────────────────────────────────────────────────────
@@ -249,17 +276,30 @@ async def get_or_create_balance(session: AsyncSession, telegram_id: int) -> User
 
 async def add_balance(session: AsyncSession, telegram_id: int, amount: float) -> UserBalance:
     b = await get_or_create_balance(session, telegram_id)
-    b.balance  = round(b.balance + amount, 4)
+    b.balance    = round(b.balance + amount, 4)
     b.updated_at = datetime.utcnow()
     await session.commit()
     await session.refresh(b)
+    logger.info("Balance +%.2f | telegram_id=%s | new_balance=%.2f", amount, telegram_id, b.balance)
     return b
 
 
-async def subtract_balance(session: AsyncSession, telegram_id: int, amount: float) -> UserBalance:
+async def subtract_balance_only(session: AsyncSession, telegram_id: int, amount: float) -> UserBalance:
+    """Just deduct from balance — does NOT add to paid_out."""
     b = await get_or_create_balance(session, telegram_id)
-    b.balance  = round(max(0, b.balance - amount), 4)
-    b.paid_out = round(b.paid_out + amount, 4)
+    b.balance    = round(max(0, b.balance - amount), 4)
+    b.updated_at = datetime.utcnow()
+    await session.commit()
+    await session.refresh(b)
+    logger.info("Balance -%.2f | telegram_id=%s | new_balance=%.2f", amount, telegram_id, b.balance)
+    return b
+
+
+async def withdraw_balance(session: AsyncSession, telegram_id: int, amount: float) -> UserBalance:
+    """Deduct balance AND add to paid_out (used on approved withdrawal)."""
+    b = await get_or_create_balance(session, telegram_id)
+    b.balance    = round(max(0, b.balance - amount), 4)
+    b.paid_out   = round(b.paid_out + amount, 4)
     b.updated_at = datetime.utcnow()
     await session.commit()
     await session.refresh(b)
@@ -268,15 +308,15 @@ async def subtract_balance(session: AsyncSession, telegram_id: int, amount: floa
 
 async def add_penalty(session: AsyncSession, telegram_id: int, amount: float) -> UserBalance:
     b = await get_or_create_balance(session, telegram_id)
-    b.penalties = round(b.penalties + amount, 4)
-    b.balance   = round(max(0, b.balance - amount), 4)
+    b.penalties  = round(b.penalties + amount, 4)
+    b.balance    = round(max(0, b.balance - amount), 4)
     b.updated_at = datetime.utcnow()
     await session.commit()
     await session.refresh(b)
     return b
 
 
-async def top_balances(session: AsyncSession, limit: int = 10) -> list[tuple]:
+async def top_balances(session: AsyncSession, limit: int = 10) -> list:
     result = await session.execute(
         select(UserBalance, User)
         .join(User, User.telegram_id == UserBalance.telegram_id)
@@ -286,7 +326,7 @@ async def top_balances(session: AsyncSession, limit: int = 10) -> list[tuple]:
     return result.all()
 
 
-# ─── Withdrawals ──────────────────────────────────────────────────────────────
+# ─── Withdrawal ───────────────────────────────────────────────────────────────
 
 async def create_withdrawal(session: AsyncSession, telegram_id: int, amount: float) -> WithdrawalRequest:
     w = WithdrawalRequest(telegram_id=telegram_id, amount=amount)
@@ -317,19 +357,23 @@ async def get_withdrawal(session: AsyncSession, withdrawal_id: int) -> Optional[
 # ─── Tasks ────────────────────────────────────────────────────────────────────
 
 async def create_task(session: AsyncSession, platform: str, link: str, max_users: int,
-                       action_type: str, description: str, reward: float, admin_id: int) -> Task:
+                       action_type: str, description: str, reward: float,
+                       admin_id: int, access_level: str = "all") -> Task:
     t = Task(platform=platform, link=link, max_users=max_users,
-             action_type=action_type, description=description, reward=reward, admin_id=admin_id)
+             action_type=action_type, description=description, reward=reward,
+             admin_id=admin_id, access_level=access_level)
     session.add(t)
     await session.commit()
     await session.refresh(t)
-    logger.info("Task created | id=%s | platform=%s | reward=%s", t.id, platform, reward)
+    logger.info("Task created | id=%s | platform=%s | access=%s | reward=%s",
+                t.id, platform, access_level, reward)
     return t
 
 
 async def add_task_comments(session: AsyncSession, task_id: int, comments: list[str]) -> None:
     for text in comments:
-        session.add(TaskComment(task_id=task_id, text=text.strip()))
+        if text.strip():
+            session.add(TaskComment(task_id=task_id, text=text.strip()))
     await session.commit()
 
 
@@ -351,24 +395,31 @@ async def delete_task(session: AsyncSession, task_id: int) -> bool:
 
 
 async def get_random_available_task(session: AsyncSession, telegram_id: int) -> Optional[Task]:
-    """Get a random active task the user hasn't taken."""
+    """Return a random eligible task for this user based on status and history."""
+    # Get user status
+    result = await session.execute(
+        select(UserProfile.status).where(UserProfile.telegram_id == telegram_id)
+    )
+    row = result.scalar_one_or_none()
+    user_status = row if row else "new"
+
+    # Tasks already taken by this user
     taken_r = await session.execute(
         select(TaskLog.task_id).where(TaskLog.telegram_id == telegram_id)
     )
     taken_ids = set(taken_r.scalars().all())
 
     avail_r = await session.execute(
-        select(Task).where(
-            and_(
-                Task.is_active == True,
-            )
-        ).options(selectinload(Task.logs))
+        select(Task).where(Task.is_active == True)
+        .options(selectinload(Task.logs))
     )
     all_tasks = avail_r.scalars().all()
 
     eligible = []
     for task in all_tasks:
         if task.id in taken_ids:
+            continue
+        if not user_matches_access(user_status, task.access_level):
             continue
         completed = sum(1 for l in task.logs if l.status == "completed")
         if completed < task.max_users:
@@ -378,7 +429,7 @@ async def get_random_available_task(session: AsyncSession, telegram_id: int) -> 
 
 
 async def accept_task(session: AsyncSession, task_id: int, telegram_id: int) -> Optional[TaskLog]:
-    # Assign unused comment if task requires it
+    # Assign unused comment
     comm_r = await session.execute(
         select(TaskComment).where(
             and_(TaskComment.task_id == task_id, TaskComment.is_used == False)
@@ -436,54 +487,108 @@ async def release_task_comment(session: AsyncSession, comment_id: int) -> None:
     result = await session.execute(select(TaskComment).where(TaskComment.id == comment_id))
     c = result.scalar_one_or_none()
     if c:
-        c.is_used = False
-        c.used_by = None
-        await session.commit()
+        c.is_used = False; c.used_by = None; await session.commit()
 
 
 async def get_task_info(session: AsyncSession, task_id: int) -> dict:
     task = await get_task(session, task_id)
     if not task:
         return {}
-    completed = [l for l in task.logs if l.status == "completed"]
+    completed   = [l for l in task.logs if l.status == "completed"]
     in_progress = [l for l in task.logs if l.status in ("accepted", "pending_review")]
-    return {
-        "task": task,
-        "completed": len(completed),
-        "in_progress": len(in_progress),
-        "logs": task.logs,
-    }
+    return {"task": task, "completed": len(completed), "in_progress": len(in_progress), "logs": task.logs}
 
 
 async def list_active_tasks(session: AsyncSession) -> list[Task]:
     result = await session.execute(
         select(Task).where(Task.is_active == True)
-        .options(selectinload(Task.logs))
-        .order_by(Task.id)
+        .options(selectinload(Task.logs)).order_by(Task.id)
     )
     return list(result.scalars().all())
 
 
-# ─── User stats ───────────────────────────────────────────────────────────────
+# ─── Payment data — with global uniqueness check ──────────────────────────────
+
+async def get_payment_data(session: AsyncSession, telegram_id: int) -> Optional[PaymentData]:
+    result = await session.execute(select(PaymentData).where(PaymentData.telegram_id == telegram_id))
+    return result.scalar_one_or_none()
+
+
+async def check_payment_unique(session: AsyncSession, field: str, value: str,
+                                 exclude_telegram_id: int) -> bool:
+    """Return True if value is unique (not used by another user)."""
+    col = getattr(PaymentData, field)
+    result = await session.execute(
+        select(PaymentData).where(
+            and_(col == value, PaymentData.telegram_id != exclude_telegram_id)
+        )
+    )
+    return result.scalar_one_or_none() is None
+
+
+async def upsert_payment_field(session: AsyncSession, telegram_id: int,
+                                field: str, value: str) -> tuple[Optional[PaymentData], str]:
+    """
+    Save a single payment field with uniqueness check.
+    Returns (PaymentData, "") on success or (None, error_message) on conflict.
+    """
+    # Check uniqueness at application level (also enforced at DB level)
+    is_unique = await check_payment_unique(session, field, value, telegram_id)
+    if not is_unique:
+        return None, "❌ Этот ID уже используется другим пользователем"
+
+    result = await session.execute(select(PaymentData).where(PaymentData.telegram_id == telegram_id))
+    pd = result.scalar_one_or_none()
+    if not pd:
+        pd = PaymentData(telegram_id=telegram_id)
+        session.add(pd)
+
+    setattr(pd, field, value)
+    pd.updated_at = datetime.utcnow()
+    try:
+        await session.commit()
+        await session.refresh(pd)
+        return pd, ""
+    except IntegrityError:
+        await session.rollback()
+        return None, "❌ Этот ID уже используется другим пользователем"
+
+
+async def clear_payment_field(session: AsyncSession, telegram_id: int, field: str) -> None:
+    result = await session.execute(select(PaymentData).where(PaymentData.telegram_id == telegram_id))
+    pd = result.scalar_one_or_none()
+    if pd:
+        setattr(pd, field, None)
+        pd.updated_at = datetime.utcnow()
+        await session.commit()
+
+
+async def list_payment_data(session: AsyncSession, page: int = 0, page_size: int = 15) -> tuple[list[PaymentData], int]:
+    count_r = await session.execute(select(func.count(PaymentData.id)))
+    total   = count_r.scalar() or 0
+    result  = await session.execute(
+        select(PaymentData).options(selectinload(PaymentData.user))
+        .order_by(PaymentData.telegram_id).offset(page * page_size).limit(page_size)
+    )
+    return list(result.scalars().all()), total
+
+
+# ─── Stats ────────────────────────────────────────────────────────────────────
 
 async def get_user_stats(session: AsyncSession, telegram_id: int) -> dict:
-    part_r = await session.execute(select(func.count()).where(ContestParticipant.telegram_id == telegram_id))
-    wins_r = await session.execute(select(func.count()).where(Winner.telegram_id == telegram_id))
+    part_r  = await session.execute(select(func.count()).where(ContestParticipant.telegram_id == telegram_id))
+    wins_r  = await session.execute(select(func.count()).where(Winner.telegram_id == telegram_id))
     prize_r = await session.execute(
         select(func.coalesce(func.sum(Contest.prize_amount), 0))
         .join(Winner, Winner.contest_id == Contest.id)
         .where(Winner.telegram_id == telegram_id)
     )
-    last_r = await session.execute(
+    last_r  = await session.execute(
         select(Winner.created_at).where(Winner.telegram_id == telegram_id)
         .order_by(Winner.created_at.desc()).limit(1)
     )
-    return {
-        "participations": part_r.scalar() or 0,
-        "wins":           wins_r.scalar() or 0,
-        "prize_sum":      float(prize_r.scalar() or 0),
-        "last_win":       last_r.scalar_one_or_none(),
-    }
+    return {"participations": part_r.scalar() or 0, "wins": wins_r.scalar() or 0,
+            "prize_sum": float(prize_r.scalar() or 0), "last_win": last_r.scalar_one_or_none()}
 
 
 async def get_public_stats(session: AsyncSession) -> dict:
@@ -493,12 +598,8 @@ async def get_public_stats(session: AsyncSession) -> dict:
     sr = await session.execute(
         select(func.coalesce(func.sum(Contest.prize_amount), 0)).where(Contest.status == "finished")
     )
-    return {
-        "finished_count":     fr.scalar() or 0,
-        "total_participants": pr.scalar() or 0,
-        "total_winners":      wr.scalar() or 0,
-        "total_prize_sum":    float(sr.scalar() or 0),
-    }
+    return {"finished_count": fr.scalar() or 0, "total_participants": pr.scalar() or 0,
+            "total_winners": wr.scalar() or 0, "total_prize_sum": float(sr.scalar() or 0)}
 
 
 async def get_top_winners(session: AsyncSession, limit: int = 10) -> list[dict]:
@@ -531,89 +632,26 @@ async def get_top_participants(session: AsyncSession, limit: int = 10) -> list[d
     return out
 
 
-# ─── Admin global stats ───────────────────────────────────────────────────────
-
 async def get_admin_status_stats(session: AsyncSession) -> dict:
-    total_r  = await session.execute(select(func.count(User.id)))
-    total    = total_r.scalar() or 0
-
-    from sqlalchemy import case
-    verified_r = await session.execute(
-        select(func.count()).select_from(UserProfile).where(UserProfile.status == "verified")
-    )
-    pending_r = await session.execute(
-        select(func.count()).select_from(UserProfile).where(UserProfile.status == "pending")
-    )
-    fake_r = await session.execute(
-        select(func.count()).select_from(UserProfile).where(UserProfile.status == "fake")
-    )
-    blocked_r = await session.execute(
-        select(func.count()).select_from(UserProfile).where(UserProfile.status == "banned")
-    )
-    afk_r = await session.execute(select(func.count()).where(User.is_afk == True))
-
+    total_r     = await session.execute(select(func.count(User.id)))
+    verified_r  = await session.execute(select(func.count()).select_from(UserProfile).where(UserProfile.status == "verified"))
+    pending_r   = await session.execute(select(func.count()).select_from(UserProfile).where(UserProfile.status == "pending"))
+    fake_r      = await session.execute(select(func.count()).select_from(UserProfile).where(UserProfile.status == "fake"))
+    blocked_r   = await session.execute(select(func.count()).select_from(UserProfile).where(UserProfile.status == "banned"))
+    afk_r       = await session.execute(select(func.count()).where(User.is_afk == True))
     tasks_r     = await session.execute(select(func.count()).select_from(Task).where(Task.is_active == True))
     completed_r = await session.execute(select(func.count()).select_from(TaskLog).where(TaskLog.status == "completed"))
     penalties_r = await session.execute(select(func.coalesce(func.sum(UserBalance.penalties), 0)).select_from(UserBalance))
     earned_r    = await session.execute(select(func.coalesce(func.sum(UserBalance.balance), 0)).select_from(UserBalance))
     paidout_r   = await session.execute(select(func.coalesce(func.sum(UserBalance.paid_out), 0)).select_from(UserBalance))
-
     return {
-        "total":      total,
-        "verified":   verified_r.scalar() or 0,
-        "pending":    pending_r.scalar() or 0,
-        "fake":       fake_r.scalar() or 0,
-        "banned_pro": blocked_r.scalar() or 0,
-        "afk":        afk_r.scalar() or 0,
-        "tasks":      tasks_r.scalar() or 0,
-        "completed":  completed_r.scalar() or 0,
-        "penalties":  float(penalties_r.scalar() or 0),
-        "earned":     float(earned_r.scalar() or 0),
-        "paid_out":   float(paidout_r.scalar() or 0),
+        "total": total_r.scalar() or 0, "verified": verified_r.scalar() or 0,
+        "pending": pending_r.scalar() or 0, "fake": fake_r.scalar() or 0,
+        "banned_pro": blocked_r.scalar() or 0, "afk": afk_r.scalar() or 0,
+        "tasks": tasks_r.scalar() or 0, "completed": completed_r.scalar() or 0,
+        "penalties": float(penalties_r.scalar() or 0), "earned": float(earned_r.scalar() or 0),
+        "paid_out": float(paidout_r.scalar() or 0),
     }
-
-
-# ─── Payment data ─────────────────────────────────────────────────────────────
-
-async def get_payment_data(session: AsyncSession, telegram_id: int) -> Optional[PaymentData]:
-    result = await session.execute(select(PaymentData).where(PaymentData.telegram_id == telegram_id))
-    return result.scalar_one_or_none()
-
-
-async def upsert_payment_data(session: AsyncSession, telegram_id: int,
-                               binance_id: Optional[str] = None,
-                               stake_user: Optional[str] = None) -> PaymentData:
-    result = await session.execute(select(PaymentData).where(PaymentData.telegram_id == telegram_id))
-    pd = result.scalar_one_or_none()
-    if not pd:
-        pd = PaymentData(telegram_id=telegram_id, binance_id=binance_id, stake_user=stake_user)
-        session.add(pd)
-    else:
-        if binance_id is not None: pd.binance_id = binance_id
-        if stake_user is not None: pd.stake_user = stake_user
-        pd.updated_at = datetime.utcnow()
-    await session.commit()
-    await session.refresh(pd)
-    return pd
-
-
-async def clear_payment_field(session: AsyncSession, telegram_id: int, field: str) -> None:
-    result = await session.execute(select(PaymentData).where(PaymentData.telegram_id == telegram_id))
-    pd = result.scalar_one_or_none()
-    if pd:
-        setattr(pd, field, None)
-        pd.updated_at = datetime.utcnow()
-        await session.commit()
-
-
-async def list_payment_data(session: AsyncSession, page: int = 0, page_size: int = 15) -> tuple[list[PaymentData], int]:
-    count_r = await session.execute(select(func.count(PaymentData.id)))
-    total   = count_r.scalar() or 0
-    result  = await session.execute(
-        select(PaymentData).options(selectinload(PaymentData.user))
-        .order_by(PaymentData.telegram_id).offset(page * page_size).limit(page_size)
-    )
-    return list(result.scalars().all()), total
 
 
 # ─── Slot system ──────────────────────────────────────────────────────────────
@@ -676,7 +714,7 @@ async def list_bet_posts(session: AsyncSession, limit: int = 20) -> list[BetPost
     return list(result.scalars().all())
 
 
-# ─── Contest system ───────────────────────────────────────────────────────────
+# ─── Contest ──────────────────────────────────────────────────────────────────
 
 async def get_active_contest(session: AsyncSession) -> Optional[Contest]:
     result = await session.execute(

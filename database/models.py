@@ -1,13 +1,43 @@
 from datetime import datetime, date
 from sqlalchemy import (
     BigInteger, Boolean, Column, Date, DateTime,
-    Float, ForeignKey, Integer, String, Text, func,
+    Float, ForeignKey, Integer, String, Text, UniqueConstraint, func,
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
 class Base(DeclarativeBase):
     pass
+
+
+# ─── Profile status constants ─────────────────────────────────────────────────
+# "new"      = ….. (default, no review yet)
+# "pending"  = ⬜️ на рассмотрении
+# "verified" = 🟩 верифицирован
+# "fake"     = 🟥 фейк / мёртвый
+# "banned"   = ⬛️ заблокирован
+# "girl"     = 🟧 девушка + верифицирована
+# "guy"      = 🟫 парень + верифицирован
+
+STATUS_ICONS = {
+    "new":      "…..",
+    "pending":  "⬜️",
+    "verified": "🟩",
+    "fake":     "🟥",
+    "banned":   "⬛️",
+    "girl":     "🟧",
+    "guy":      "🟫",
+}
+
+# Task access_level values
+# "all"        - everything
+# "new"        - only new/unverified
+# "pending"    - only pending
+# "verified"   - only verified (🟩 + 🟧 + 🟫)
+# "no_fake"    - exclude fake
+# "girl_ver"   - 🟧 girls + 🟩 verified
+# "guy_ver"    - 🟫 guys + 🟩 verified
+ACCESS_LEVELS = ["all", "new", "pending", "verified", "no_fake", "girl_ver", "guy_ver"]
 
 
 class User(Base):
@@ -43,7 +73,8 @@ class UserProfile(Base):
     threads     = Column(String(255), nullable=True)
     facebook    = Column(String(512), nullable=True)
     twitter     = Column(String(255), nullable=True)
-    status      = Column(String(20), default="pending", nullable=False)
+    # status: new | pending | verified | fake | banned | girl | guy
+    status      = Column(String(20), default="new", nullable=False)
     bonus_paid  = Column(Boolean, default=False, nullable=False)
     created_at  = Column(DateTime, default=datetime.utcnow)
     updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -74,16 +105,18 @@ class WithdrawalRequest(Base):
 
 class Task(Base):
     __tablename__ = "tasks"
-    id          = Column(Integer, primary_key=True)
-    platform    = Column(String(50), nullable=False)
-    link        = Column(String(1024), nullable=False)
-    max_users   = Column(Integer, nullable=False, default=15)
-    action_type = Column(String(100), nullable=False)
-    description = Column(Text, nullable=True)
-    reward      = Column(Float, nullable=False, default=0.20)
-    is_active   = Column(Boolean, default=True, nullable=False)
-    admin_id    = Column(BigInteger, nullable=False)
-    created_at  = Column(DateTime, default=datetime.utcnow)
+    id           = Column(Integer, primary_key=True)
+    platform     = Column(String(50), nullable=False)
+    link         = Column(String(1024), nullable=False)
+    max_users    = Column(Integer, nullable=False, default=15)
+    action_type  = Column(String(100), nullable=False)
+    description  = Column(Text, nullable=True)
+    reward       = Column(Float, nullable=False, default=0.20)
+    # access_level: all | new | pending | verified | no_fake | girl_ver | guy_ver
+    access_level = Column(String(30), default="all", nullable=False)
+    is_active    = Column(Boolean, default=True, nullable=False)
+    admin_id     = Column(BigInteger, nullable=False)
+    created_at   = Column(DateTime, default=datetime.utcnow)
     comments = relationship("TaskComment", back_populates="task")
     logs     = relationship("TaskLog", back_populates="task")
 
@@ -113,7 +146,15 @@ class TaskLog(Base):
 
 
 class PaymentData(Base):
+    """
+    Stake ID and Binance ID are GLOBALLY UNIQUE across all users.
+    DB enforces uniqueness via UniqueConstraint.
+    """
     __tablename__ = "payment_data"
+    __table_args__ = (
+        UniqueConstraint("stake_user", name="uq_payment_stake_user"),
+        UniqueConstraint("binance_id", name="uq_payment_binance_id"),
+    )
     id          = Column(Integer, primary_key=True)
     telegram_id = Column(BigInteger, ForeignKey("users.telegram_id"), unique=True, nullable=False)
     binance_id  = Column(String(256), nullable=True)
