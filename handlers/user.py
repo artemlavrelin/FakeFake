@@ -13,6 +13,7 @@ from config import (
 from database import repository
 from strings import t
 from keyboards.inline import (
+    main_menu_keyboard_v11,
     back_to_menu_keyboard, binance_delete_confirm_keyboard,
     binance_has_data_keyboard, binance_no_data_keyboard,
     cancel_keyboard, contest_not_participating_keyboard,
@@ -86,7 +87,7 @@ async def cb_set_lang(call: CallbackQuery, session: AsyncSession) -> None:
     await repository.set_lang(session, call.from_user.id, lang)
     await call.message.edit_text(
         f"{BOT_GREETING}\n\n{t(lang, 'menu_text')}",
-        reply_markup=main_menu_keyboard(lang),
+        reply_markup=main_menu_keyboard_v11(lang),
     )
     await call.answer()
 
@@ -108,7 +109,7 @@ async def cb_menu(call: CallbackQuery, session: AsyncSession) -> None:
     lang = await _lang(session, call.from_user.id)
     await call.message.edit_text(
         f"{BOT_GREETING}\n\n{t(lang, 'menu_text')}",
-        reply_markup=main_menu_keyboard(lang),
+        reply_markup=main_menu_keyboard_v11(lang),
     )
     await call.answer()
 
@@ -384,7 +385,11 @@ async def fsm_stake(message: Message, state: FSMContext, session: AsyncSession, 
     is_first_add = data.get("is_first_add", True)
     await state.clear()
 
-    await repository.upsert_payment_data(session, message.from_user.id, stake_user=val)
+    pd_result, err = await repository.upsert_payment_field(session, message.from_user.id, "stake_user", val)
+    if err:
+        await message.answer(err, parse_mode="HTML")
+        return
+    pd = pd_result
 
     user = await repository.get_or_create_user(session, message.from_user.id, message.from_user.username)
     num  = f"▫️{user.user_number}" if user.user_number else ""
@@ -492,7 +497,11 @@ async def fsm_binance(message: Message, state: FSMContext, session: AsyncSession
     is_first_add = data.get("is_first_add", True)
     await state.clear()
 
-    await repository.upsert_payment_data(session, message.from_user.id, binance_id=val)
+    pd_result, err = await repository.upsert_payment_field(session, message.from_user.id, "binance_id", val)
+    if err:
+        await message.answer(err, parse_mode="HTML")
+        return
+    pd = pd_result
 
     user = await repository.get_or_create_user(session, message.from_user.id, message.from_user.username)
     num  = f"▫️{user.user_number}" if user.user_number else ""
@@ -544,6 +553,6 @@ async def cb_cancel_fsm(call: CallbackQuery, state: FSMContext, session: AsyncSe
     lang = await _lang(session, call.from_user.id)
     await call.message.edit_text(
         f"{BOT_GREETING}\n\n{t(lang, 'menu_text')}",
-        reply_markup=main_menu_keyboard(lang),
+        reply_markup=main_menu_keyboard_v11(lang),
     )
     await call.answer()
