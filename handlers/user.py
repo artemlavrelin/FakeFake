@@ -1,3 +1,4 @@
+"""Main user handler — /start, menu, raffle, stats, payment sections."""
 from aiogram import Bot, F, Router
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
@@ -13,14 +14,24 @@ from config import (
 from database import repository
 from strings import t
 from keyboards.inline import (
-    main_menu_keyboard_v11,
-    back_to_menu_keyboard, binance_delete_confirm_keyboard,
-    binance_has_data_keyboard, binance_no_data_keyboard,
-    cancel_keyboard, contest_not_participating_keyboard,
-    contest_participating_keyboard, lang_keyboard, main_menu_keyboard,
-    participate_confirm_keyboard, public_stats_keyboard, report_keyboard,
-    stake_delete_confirm_keyboard, stake_has_data_keyboard,
-    stake_no_data_keyboard, top_list_keyboard,
+    back_to_menu_keyboard,
+    binance_delete_confirm_keyboard, binance_has_data_keyboard, binance_no_data_keyboard,
+    binance_replace_confirm_keyboard,
+    cancel_keyboard,
+    contest_not_participating_keyboard, contest_participating_keyboard,
+    hub_keyboard,
+    lang_keyboard,
+    main_menu_keyboard_v11 as main_menu_keyboard,
+    my_stats_keyboard,
+    participate_confirm_keyboard,
+    profile_keyboard,
+    public_stats_keyboard,
+    raffle_no_contest_keyboard,
+    report_keyboard,
+    stake_delete_confirm_keyboard, stake_has_data_keyboard, stake_no_data_keyboard,
+    stake_replace_confirm_keyboard,
+    tasks_menu_keyboard,
+    top_list_keyboard,
 )
 from states.contest import BinanceInput, ReviewInput, StakeInput
 from utils.formatters import (
@@ -32,6 +43,8 @@ from utils.time_utils import time_ago
 
 logger = get_logger(__name__)
 router = Router()
+
+MIN_WITHDRAWAL = 3.0   # minimum $3 withdrawal
 
 
 async def _lang(session: AsyncSession, tid: int) -> str:
@@ -45,13 +58,13 @@ async def _notify_payment_change(bot: Bot, lang: str, user, field_label: str, ne
     uname = user.username or "(нет username)"
     num   = user.user_number or "—"
     try:
-        await bot.send_message(
-            MODER_GROUP_ID,
-            t(lang, "payment_changed_moder",
-              username=uname, uid=user.telegram_id,
-              num=num, field=field_label, value=new_value),
-            parse_mode="HTML",
+        text = (
+            f"Изменение платёжных данных\n\n"
+            f"@{uname} | {user.telegram_id} | {num}\n"
+            f"Поле: {field_label}\n"
+            f"Новое значение: {new_value}"
         )
+        await bot.send_message(MODER_GROUP_ID, text)
     except Exception as e:
         logger.warning("Payment change notify | moder=%s | %s", MODER_GROUP_ID, e)
 
@@ -61,34 +74,24 @@ async def _notify_payment_change(bot: Bot, lang: str, user, field_label: str, ne
 @router.message(CommandStart())
 async def cmd_start(message: Message, session: AsyncSession, state: FSMContext) -> None:
     await state.clear()
-    user = await repository.get_or_create_user(
-        session, message.from_user.id, message.from_user.username
-    )
+    user = await repository.get_or_create_user(session, message.from_user.id, message.from_user.username)
     if not user.lang:
-        await message.answer(
-            f"{BOT_GREETING}\n\n{t('ru', 'choose_language')}",
-            reply_markup=lang_keyboard(),
-        )
-        return
+        await message.answer(f"{BOT_GREETING}\n\n{t('ru', 'choose_language')}",
+                              reply_markup=lang_keyboard()); return
     args    = message.text.split(maxsplit=1)
     payload = args[1] if len(args) > 1 else ""
     if payload.startswith("contest_"):
-        await _show_raffle(message, session, user.lang, edit=False)
-        return
-    await message.answer(
-        f"{BOT_GREETING}\n\n{t(user.lang, 'menu_text')}",
-        reply_markup=main_menu_keyboard(user.lang),
-    )
+        await _show_raffle(message, session, user.lang, edit=False); return
+    await message.answer(f"{BOT_GREETING}\n\n{t(user.lang, 'menu_text')}",
+                          reply_markup=main_menu_keyboard(user.lang))
 
 
 @router.callback_query(F.data.startswith("set_lang:"))
 async def cb_set_lang(call: CallbackQuery, session: AsyncSession) -> None:
     lang = call.data.split(":")[1]
     await repository.set_lang(session, call.from_user.id, lang)
-    await call.message.edit_text(
-        f"{BOT_GREETING}\n\n{t(lang, 'menu_text')}",
-        reply_markup=main_menu_keyboard_v11(lang),
-    )
+    await call.message.edit_text(f"{BOT_GREETING}\n\n{t(lang, 'menu_text')}",
+                                  reply_markup=main_menu_keyboard(lang))
     await call.answer()
 
 
@@ -97,24 +100,20 @@ async def cb_switch_lang(call: CallbackQuery, session: AsyncSession) -> None:
     current  = await _lang(session, call.from_user.id)
     new_lang = "en" if current == "ru" else "ru"
     await repository.set_lang(session, call.from_user.id, new_lang)
-    await call.message.edit_text(
-        f"{BOT_GREETING}\n\n{t(new_lang, 'menu_text')}",
-        reply_markup=main_menu_keyboard(new_lang),
-    )
+    await call.message.edit_text(f"{BOT_GREETING}\n\n{t(new_lang, 'menu_text')}",
+                                  reply_markup=main_menu_keyboard(new_lang))
     await call.answer()
 
 
 @router.callback_query(F.data == "menu")
 async def cb_menu(call: CallbackQuery, session: AsyncSession) -> None:
     lang = await _lang(session, call.from_user.id)
-    await call.message.edit_text(
-        f"{BOT_GREETING}\n\n{t(lang, 'menu_text')}",
-        reply_markup=main_menu_keyboard_v11(lang),
-    )
+    await call.message.edit_text(f"{BOT_GREETING}\n\n{t(lang, 'menu_text')}",
+                                  reply_markup=main_menu_keyboard(lang))
     await call.answer()
 
 
-# ─── Raffle ───────────────────────────────────────────────────────────────────
+# ─── 🤹🏼 РОЗЫГРЫШ ─────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "raffle")
 async def cb_raffle(call: CallbackQuery, session: AsyncSession) -> None:
@@ -126,28 +125,51 @@ async def _show_raffle(event, session: AsyncSession, lang: str, edit: bool) -> N
     is_call = isinstance(event, CallbackQuery)
     uid     = event.from_user.id
     msg     = event.message if is_call else event
+
     user    = await repository.get_or_create_user(session, uid, event.from_user.username)
+    stats   = await repository.get_public_stats(session)
+
+    # Always show public stats on raffle screen
+    prize_str = f"${stats['total_prize_sum']:.0f}" if stats["total_prize_sum"] > 0 else "—"
+    stats_block = (
+        f"\n🎢 Проведено конкурсов: {stats['finished_count']}\n"
+        f"🤞🏻 Участвовали: {stats['total_participants']}\n"
+        f"🏅 Победители: {stats['total_winners']}\n"
+        f"💵 Выплачено: {prize_str}"
+    )
+
     contest = await repository.get_active_contest(session)
+
     if not contest:
-        text = t(lang, "raffle_no_contest")
+        text = f"🤹🏼 <b>РОЗЫГРЫШ</b>\n\nСейчас нет активного конкурса.\n{stats_block}"
+        kb   = raffle_no_contest_keyboard(lang)
         if edit:
-            await msg.edit_text(text, parse_mode="HTML", reply_markup=back_to_menu_keyboard(lang))
+            await msg.edit_text(text, parse_mode="HTML", reply_markup=kb)
         else:
-            await msg.answer(text, parse_mode="HTML", reply_markup=back_to_menu_keyboard(lang))
+            await msg.answer(text, parse_mode="HTML", reply_markup=kb)
         if is_call:
             await event.answer()
         return
+
     count   = await repository.get_participant_count(session, contest.id)
     already = await repository.is_participant(session, contest.id, uid)
     chance  = calc_chance(contest.winners_count, count, already)
     bar     = stats_bar(time_ago(contest.created_at), count, contest.winners_count, contest.prize_text, chance)
+
     if already:
-        status, kb = t(lang, "raffle_participating"), contest_participating_keyboard(lang)
+        status, kb = "👉 Вы участвуете в конкурсе, удачи 🤞🏻", contest_participating_keyboard(lang)
     elif user.is_banned:
-        status, kb = t(lang, "raffle_banned"), back_to_menu_keyboard(lang)
+        status, kb = "❌ Вы заблокированы", back_to_menu_keyboard(lang)
     else:
-        status, kb = t(lang, "raffle_not_participating"), contest_not_participating_keyboard(lang)
-    text = t(lang, "raffle_header", id=contest.id, title=contest.title, bar=bar, status=status)
+        status, kb = "❌", contest_not_participating_keyboard(lang)
+
+    text = (
+        f"🤹🏾‍♀️ <b>#{contest.id} ТЕКУЩИЙ КОНКУРС</b>\n\n"
+        f"📌 {contest.title}\n\n"
+        f"{bar}\n\n"
+        f"{status}"
+        f"{stats_block}"
+    )
     if edit:
         await msg.edit_text(text, parse_mode="HTML", reply_markup=kb)
     else:
@@ -161,18 +183,19 @@ async def cb_participate(call: CallbackQuery, session: AsyncSession) -> None:
     lang = await _lang(session, call.from_user.id)
     user = await repository.get_or_create_user(session, call.from_user.id, call.from_user.username)
     if user.is_banned:
-        await call.answer(t(lang, "raffle_banned_alert"), show_alert=True); return
+        await call.answer("🚫 Вы заблокированы.", show_alert=True); return
     contest = await repository.get_active_contest(session)
     if not contest:
-        await call.answer(t(lang, "raffle_finished"), show_alert=True); return
+        await call.answer("Конкурс завершён.", show_alert=True); return
     if await repository.is_participant(session, contest.id, call.from_user.id):
-        await call.answer(t(lang, "raffle_already"), show_alert=True); return
+        await call.answer("👉 Вы уже участвуете!", show_alert=True); return
     count  = await repository.get_participant_count(session, contest.id)
     chance = calc_chance(contest.winners_count, count + 1, True)
     bar    = stats_bar(time_ago(contest.created_at), count, contest.winners_count, contest.prize_text, chance)
     await call.message.edit_text(
-        t(lang, "raffle_confirm_text", title=contest.title, bar=bar),
-        parse_mode="HTML", reply_markup=participate_confirm_keyboard(lang, contest.id),
+        f"📌 {contest.title}\n\n{bar}\n\nПринять участие?",
+        parse_mode="HTML",
+        reply_markup=participate_confirm_keyboard(lang, contest.id),
     )
     await call.answer()
 
@@ -183,22 +206,22 @@ async def cb_confirm(call: CallbackQuery, session: AsyncSession) -> None:
     lang = await _lang(session, call.from_user.id)
     user = await repository.get_or_create_user(session, call.from_user.id, call.from_user.username)
     if user.is_banned:
-        await call.answer(t(lang, "raffle_banned_alert"), show_alert=True); return
+        await call.answer("🚫 Вы заблокированы.", show_alert=True); return
     contest = await repository.get_active_contest(session)
     if not contest or contest.id != contest_id:
-        await call.message.edit_text(t(lang, "raffle_finished"), reply_markup=back_to_menu_keyboard(lang))
+        await call.message.edit_text("Конкурс завершён.", reply_markup=back_to_menu_keyboard(lang))
         await call.answer(); return
     if await repository.is_participant(session, contest.id, call.from_user.id):
-        await call.answer(t(lang, "raffle_already"), show_alert=True); return
+        await call.answer("👉 Вы уже участвуете!", show_alert=True); return
     await repository.add_participant(session, contest.id, call.from_user.id)
     count  = await repository.get_participant_count(session, contest.id)
     chance = calc_chance(contest.winners_count, count, True)
     bar    = stats_bar(time_ago(contest.created_at), count, contest.winners_count, contest.prize_text, chance)
     await call.message.edit_text(
-        t(lang, "raffle_joined", title=contest.title, bar=bar),
+        f"✅ <b>Вы зарегистрированы!</b>\n\n{bar}\n\n👉 Ожидайте результатов. Удачи! 🤞🏻",
         parse_mode="HTML", reply_markup=back_to_menu_keyboard(lang),
     )
-    await call.answer(t(lang, "btn_confirm"))
+    await call.answer("✅ Принято!")
 
 
 @router.callback_query(F.data.startswith("group_join:"))
@@ -207,24 +230,42 @@ async def cb_group_join(call: CallbackQuery, session: AsyncSession) -> None:
     user = await repository.get_or_create_user(session, call.from_user.id, call.from_user.username)
     lang = user.lang or "ru"
     if user.is_banned:
-        await call.answer(t(lang, "raffle_banned_alert"), show_alert=True); return
+        await call.answer("🚫 Вы заблокированы.", show_alert=True); return
     contest = await repository.get_active_contest(session)
     if not contest or contest.id != contest_id:
-        await call.answer(t(lang, "group_finished"), show_alert=True); return
+        await call.answer("Конкурс завершён.", show_alert=True); return
     if await repository.is_participant(session, contest.id, call.from_user.id):
-        await call.answer(t(lang, "raffle_already"), show_alert=True); return
+        await call.answer("👉 Вы уже участвуете!", show_alert=True); return
     await repository.add_participant(session, contest.id, call.from_user.id)
     count = await repository.get_participant_count(session, contest.id)
-    await call.answer(t(lang, "group_joined", n=count), show_alert=True)
+    await call.answer(f"✅ Зарегистрированы! Участников: {count}", show_alert=True)
 
 
-# ─── Report + Reviews ─────────────────────────────────────────────────────────
+# ─── ⭐️ Hub ────────────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data == "hub")
+async def cb_hub(call: CallbackQuery, session: AsyncSession) -> None:
+    lang = await _lang(session, call.from_user.id)
+    await call.message.edit_text(
+        "⭐️ <b>Выплаты / Отзывы / Статистика</b>",
+        parse_mode="HTML",
+        reply_markup=hub_keyboard(lang),
+    )
+    await call.answer()
+
 
 @router.callback_query(F.data == "report")
 async def cb_report(call: CallbackQuery, session: AsyncSession) -> None:
     lang = await _lang(session, call.from_user.id)
     await call.message.edit_text(
-        t(lang, "report_text", title=REPORT_CHANNEL_TITLE), parse_mode="HTML",
+        f"⭐️ <b>ВЫПЛАТЫ / ОТЗЫВЫ</b>\n\n"
+        f"<b>{REPORT_CHANNEL_TITLE}</b> — прозрачная отчётность:\n\n"
+        "• ✅ Подтверждения выплат\n"
+        "• 🏆 Результаты розыгрышей\n"
+        "• 💬 Отзывы участников\n"
+        "• 📊 Статистика победителей\n\n"
+        "Перейди в канал или оставь отзыв:",
+        parse_mode="HTML",
         reply_markup=report_keyboard(lang, REPORT_CHANNEL_URL),
     )
     await call.answer()
@@ -239,10 +280,10 @@ async def cb_review_start(call: CallbackQuery, state: FSMContext, session: Async
     if not can:
         secs = int(remaining.total_seconds())
         h, m = secs // 3600, (secs % 3600) // 60
-        await call.answer(t(lang, "review_cooldown", h=h, m=m), show_alert=True); return
+        await call.answer(f"⏳ Следующий отзыв через {h}ч {m}м.", show_alert=True); return
     await state.set_state(ReviewInput.waiting_content)
     await call.message.edit_text(
-        t(lang, "review_prompt"), parse_mode="HTML",
+        "✍️ Отправьте текст, фото или видео. Один отзыв каждые 12 часов.",
         reply_markup=cancel_keyboard(lang, back_cb="report"),
     )
     await call.answer()
@@ -255,16 +296,15 @@ async def fsm_review(message: Message, state: FSMContext, session: AsyncSession,
     can, _ = await repository.check_cooldown(session, message.from_user.id, "last_review_at", REVIEW_COOLDOWN_HOURS)
     if not can:
         await state.clear()
-        await message.answer(t(lang, "review_sent"), parse_mode="HTML", reply_markup=back_to_menu_keyboard(lang))
-        return
+        await message.answer("✅ Спасибо!", reply_markup=back_to_menu_keyboard(lang)); return
     await state.clear()
     await repository.set_timestamp(session, message.from_user.id, "last_review_at")
     if MODER_GROUP_ID:
-        uname  = message.from_user.username or t(lang, "review_moder_no_username")
-        num    = user.user_number or "—"
-        header = t(lang, "review_moder_header", username=uname, uid=message.from_user.id, num=num)
+        uname = message.from_user.username or "(нет username)"
+        num   = user.user_number or "—"
+        header = f"Новый отзыв\n\n@{uname} | {message.from_user.id} | {num}"
         try:
-            await bot.send_message(MODER_GROUP_ID, header, parse_mode="HTML")
+            await bot.send_message(MODER_GROUP_ID, header)
             if message.photo:
                 await bot.send_photo(MODER_GROUP_ID, message.photo[-1].file_id, caption=message.caption or "")
             elif message.video:
@@ -272,20 +312,33 @@ async def fsm_review(message: Message, state: FSMContext, session: AsyncSession,
             elif message.text:
                 await bot.send_message(MODER_GROUP_ID, message.text)
         except Exception as e:
-            logger.warning("Review forward | moder=%s | %s", MODER_GROUP_ID, e)
-    await message.answer(t(lang, "review_sent"), parse_mode="HTML", reply_markup=back_to_menu_keyboard(lang))
+            logger.warning("Review forward | %s", e)
+    await message.answer("✅ Спасибо! Отзыв отправлен.", reply_markup=back_to_menu_keyboard(lang))
 
 
 # ─── Stats ────────────────────────────────────────────────────────────────────
 
-@router.callback_query(F.data == "my_stats")
-async def cb_my_stats(call: CallbackQuery, session: AsyncSession) -> None:
-    lang  = await _lang(session, call.from_user.id)
-    user  = await repository.get_or_create_user(session, call.from_user.id, call.from_user.username)
-    stats = await repository.get_user_stats(session, call.from_user.id)
+@router.callback_query(F.data == "my_stats_full")
+async def cb_my_stats_full(call: CallbackQuery, session: AsyncSession) -> None:
+    user    = await repository.get_or_create_user(session, call.from_user.id, call.from_user.username)
+    balance = await repository.get_or_create_balance(session, call.from_user.id)
+    stats   = await repository.get_user_stats(session, call.from_user.id)
+    profile = user.profile
+    from database.models import STATUS_ICONS
+    num    = f"▫️{user.user_number}" if user.user_number else "▫️—"
+    status = STATUS_ICONS.get(profile.status if profile else "new", "…..")
+    total  = balance.balance + balance.paid_out
+    lang   = await _lang(session, call.from_user.id)
+
     await call.message.edit_text(
-        format_personal_stats(stats, user.user_number, lang),
-        parse_mode="HTML", reply_markup=back_to_menu_keyboard(lang),
+        f"{status} {num}\n\n"
+        f"<b>РОЗЫГРЫШ:</b>\n"
+        f"🤽 {stats['participations']}   🏅 {stats['wins']}   💵 ${stats['prize_sum']:.2f}\n\n"
+        f"⭐️ Баланс: <b>${balance.balance:.2f}</b>\n"
+        f"💫 Выплачено: <b>${balance.paid_out:.2f}</b>\n"
+        f"✨ Всего: <b>${total:.2f}</b>",
+        parse_mode="HTML",
+        reply_markup=my_stats_keyboard(lang),
     )
     await call.answer()
 
@@ -321,7 +374,58 @@ async def cb_top_participants(call: CallbackQuery, session: AsyncSession) -> Non
     await call.answer()
 
 
-# ─── 🤞🏻 Stake — dynamic Add vs Edit ─────────────────────────────────────────
+# ─── 🥼 ПРОФИЛЬ ───────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data == "profile")
+async def cb_profile(call: CallbackQuery, session: AsyncSession) -> None:
+    user    = await repository.get_or_create_user(session, call.from_user.id, call.from_user.username)
+    profile = user.profile or await repository.get_or_create_profile(session, call.from_user.id)
+    pd      = user.payment
+
+    from database.models import STATUS_ICONS
+    num    = f"▫️{user.user_number}" if user.user_number else "▫️—"
+    status = STATUS_ICONS.get(profile.status, "…..")
+    stake  = pd.stake_user  if pd and pd.stake_user  else "—"
+    binance= pd.binance_id  if pd and pd.binance_id  else "—"
+    insta  = f"@{profile.instagram}" if profile.instagram else "—"
+    threads= f"@{profile.threads}"   if profile.threads   else "—"
+    fb     = profile.facebook or "—"
+    tw     = f"@{profile.twitter}"   if profile.twitter   else "—"
+    tiktok = f"@{profile.tiktok}"    if hasattr(profile, 'tiktok') and profile.tiktok else "—"
+
+    has_social = any([profile.instagram, profile.threads, profile.facebook, profile.twitter])
+
+    await call.message.edit_text(
+        f"🥼 <b>ПРОФИЛЬ</b> {status} {num}\n\n"
+        f"♠️ Stake: {stake}\n"
+        f"🟨 Binance: {binance}\n\n"
+        f"🐦 X: {tw}\n"
+        f"🔵 Facebook: {fb}\n"
+        f"🔸 Instagram: {insta}\n"
+        f"🧵 Threads: {threads}\n"
+        f"🎶 TikTok: {tiktok}",
+        parse_mode="HTML",
+        reply_markup=profile_keyboard(has_social),
+    )
+    await call.answer()
+
+
+# ─── 🃏 ЗАДАНИЯ ────────────────────────────────────────────────────────────────
+
+@router.callback_query(F.data == "tasks")
+async def cb_tasks_entry(call: CallbackQuery, session: AsyncSession) -> None:
+    if await repository.get_user(session, call.from_user.id) and \
+       (await repository.get_user(session, call.from_user.id)).is_afk:
+        await call.answer("👅 Вам доступна только команда /report", show_alert=True); return
+    await call.message.edit_text(
+        "🃏 <b>ЗАДАНИЯ</b>\n\nНажмите кнопку чтобы получить задание:",
+        parse_mode="HTML",
+        reply_markup=tasks_menu_keyboard(),
+    )
+    await call.answer()
+
+
+# ─── ♠️ Stake — Add (no notify) / Edit (cooldown + notify) ────────────────────
 
 @router.callback_query(F.data == "atm:stake")
 async def cb_stake(call: CallbackQuery, session: AsyncSession) -> None:
@@ -329,26 +433,25 @@ async def cb_stake(call: CallbackQuery, session: AsyncSession) -> None:
     user = await repository.get_or_create_user(session, call.from_user.id, call.from_user.username)
     pd   = await repository.get_payment_data(session, call.from_user.id)
     num  = f"▫️{user.user_number}" if user.user_number else ""
-
-    if pd and pd.stake_user:
-        text = t(lang, "stake_header_filled", num=num, val=pd.stake_user)
+    val  = pd.stake_user if pd and pd.stake_user else None
+    if val:
+        text = f"♠️ <b>STAKE</b>\n\n{num}\n\n🎰 Stake username: <code>{val}</code>"
         kb   = stake_has_data_keyboard(lang, STAKE_URL)
     else:
-        text = t(lang, "stake_header_empty", num=num)
+        text = f"♠️ <b>STAKE</b>\n\n{num}\n\n🎰 Stake username: —"
         kb   = stake_no_data_keyboard(lang, STAKE_URL)
-
     await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await call.answer()
 
 
 @router.callback_query(F.data == "stake:add")
 async def cb_stake_add(call: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
-    """First-time add — no cooldown, no mod notification."""
     lang = await _lang(session, call.from_user.id)
     await state.set_state(StakeInput.waiting_value)
     await state.update_data(is_first_add=True)
     await call.message.edit_text(
-        t(lang, "stake_enter"), parse_mode="HTML",
+        "♠️ Введите ваш <b>Stake username</b>:",
+        parse_mode="HTML",
         reply_markup=cancel_keyboard(lang, back_cb="atm:stake"),
     )
     await call.answer()
@@ -356,7 +459,6 @@ async def cb_stake_add(call: CallbackQuery, state: FSMContext, session: AsyncSes
 
 @router.callback_query(F.data == "stake:edit")
 async def cb_stake_edit(call: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
-    """Edit existing value — cooldown applies, mod notification on save."""
     lang = await _lang(session, call.from_user.id)
     can, remaining = await repository.check_payment_change_cooldown(
         session, call.from_user.id, "last_stake_change_at", PAYMENT_CHANGE_COOLDOWN_DAYS
@@ -364,11 +466,12 @@ async def cb_stake_edit(call: CallbackQuery, state: FSMContext, session: AsyncSe
     if not can:
         secs = int(remaining.total_seconds())
         d, h = secs // 86400, (secs % 86400) // 3600
-        await call.answer(t(lang, "payment_cooldown_stake", d=d, h=h), show_alert=True); return
+        await call.answer(f"⏳ Изменить можно через {d}д {h}ч.", show_alert=True); return
     await state.set_state(StakeInput.waiting_value)
     await state.update_data(is_first_add=False)
     await call.message.edit_text(
-        t(lang, "stake_enter"), parse_mode="HTML",
+        "♠️ Введите новый <b>Stake username</b>:",
+        parse_mode="HTML",
         reply_markup=cancel_keyboard(lang, back_cb="atm:stake"),
     )
     await call.answer()
@@ -379,33 +482,40 @@ async def fsm_stake(message: Message, state: FSMContext, session: AsyncSession, 
     lang = await _lang(session, message.from_user.id)
     val  = (message.text or "").strip()
     if not val:
-        await message.answer(t(lang, "stake_enter"), parse_mode="HTML"); return
+        await message.answer("♠️ Введите Stake username:"); return
 
     data         = await state.get_data()
     is_first_add = data.get("is_first_add", True)
-    await state.clear()
+    new_val      = data.get("pending_value")
 
-    pd_result, err = await repository.upsert_payment_field(session, message.from_user.id, "stake_user", val)
+    # If we have a pending value (after replace confirmation), use it
+    if new_val:
+        val = new_val
+
+    # Check uniqueness
+    pd_check, err = await repository.upsert_payment_field(session, message.from_user.id, "stake_user", val)
     if err:
-        await message.answer(err, parse_mode="HTML")
-        return
-    pd = pd_result
+        await state.clear()
+        await message.answer(err); return
+
+    await state.clear()
+    await repository.update_user_slot  # placeholder
 
     user = await repository.get_or_create_user(session, message.from_user.id, message.from_user.username)
+    pd   = await repository.get_payment_data(session, message.from_user.id)
     num  = f"▫️{user.user_number}" if user.user_number else ""
 
-    if is_first_add:
-        # First add — no cooldown stamp, no mod notification
-        msg_key = "stake_added"
-    else:
-        # Edit — stamp cooldown, notify mod group
+    if not is_first_add:
         await repository.set_payment_change_timestamp(session, message.from_user.id, "last_stake_change_at")
         await _notify_payment_change(bot, lang, user, "Stake username", val)
-        msg_key = "stake_updated"
+        msg_key = "Stake username обновлён"
+    else:
+        msg_key = "Stake username сохранён"
 
     await message.answer(
-        t(lang, msg_key, val=val) + "\n\n" +
-        t(lang, "stake_header_filled", num=num, val=val),
+        f"✅ {msg_key}: <code>{val}</code>\n\n"
+        f"♠️ <b>STAKE</b>\n\n{num}\n\n"
+        f"🎰 Stake username: <code>{pd.stake_user}</code>",
         parse_mode="HTML",
         reply_markup=stake_has_data_keyboard(lang, STAKE_URL),
     )
@@ -414,9 +524,8 @@ async def fsm_stake(message: Message, state: FSMContext, session: AsyncSession, 
 @router.callback_query(F.data == "stake:delete")
 async def cb_stake_delete(call: CallbackQuery, session: AsyncSession) -> None:
     lang = await _lang(session, call.from_user.id)
-    await call.message.edit_text(
-        t(lang, "stake_delete_confirm"), reply_markup=stake_delete_confirm_keyboard(lang),
-    )
+    await call.message.edit_text("Удалить Stake username?",
+                                  reply_markup=stake_delete_confirm_keyboard(lang))
     await call.answer()
 
 
@@ -428,14 +537,15 @@ async def cb_stake_delete_confirm(call: CallbackQuery, session: AsyncSession, bo
     user = await repository.get_or_create_user(session, call.from_user.id, call.from_user.username)
     num  = f"▫️{user.user_number}" if user.user_number else ""
     await call.message.edit_text(
-        t(lang, "stake_deleted") + "\n\n" + t(lang, "stake_header_empty", num=num),
-        parse_mode="HTML", reply_markup=stake_no_data_keyboard(lang, STAKE_URL),
+        f"🗑 Stake username удалён.\n\n♠️ <b>STAKE</b>\n\n{num}\n\n🎰 Stake username: —",
+        parse_mode="HTML",
+        reply_markup=stake_no_data_keyboard(lang, STAKE_URL),
     )
     await call.answer()
     await _notify_payment_change(bot, lang, user, "Stake username", "УДАЛЕНО")
 
 
-# ─── 🟡 Binance — dynamic Add vs Edit ────────────────────────────────────────
+# ─── 🟨 Binance — Add (no notify) / Edit (cooldown + notify) ─────────────────
 
 @router.callback_query(F.data == "atm:binance")
 async def cb_binance(call: CallbackQuery, session: AsyncSession) -> None:
@@ -443,14 +553,13 @@ async def cb_binance(call: CallbackQuery, session: AsyncSession) -> None:
     user = await repository.get_or_create_user(session, call.from_user.id, call.from_user.username)
     pd   = await repository.get_payment_data(session, call.from_user.id)
     num  = f"▫️{user.user_number}" if user.user_number else ""
-
-    if pd and pd.binance_id:
-        text = t(lang, "binance_header_filled", num=num, val=pd.binance_id)
+    val  = pd.binance_id if pd and pd.binance_id else None
+    if val:
+        text = f"🟨 <b>BINANCE</b>\n\n{num}\n\n💛 Binance ID: <code>{val}</code>"
         kb   = binance_has_data_keyboard(lang, BINANCE_URL)
     else:
-        text = t(lang, "binance_header_empty", num=num)
+        text = f"🟨 <b>BINANCE</b>\n\n{num}\n\n💛 Binance ID: —"
         kb   = binance_no_data_keyboard(lang, BINANCE_URL)
-
     await call.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
     await call.answer()
 
@@ -461,7 +570,8 @@ async def cb_binance_add(call: CallbackQuery, state: FSMContext, session: AsyncS
     await state.set_state(BinanceInput.waiting_value)
     await state.update_data(is_first_add=True)
     await call.message.edit_text(
-        t(lang, "binance_enter"), parse_mode="HTML",
+        "🟨 Введите ваш <b>Binance ID</b>:",
+        parse_mode="HTML",
         reply_markup=cancel_keyboard(lang, back_cb="atm:binance"),
     )
     await call.answer()
@@ -476,11 +586,12 @@ async def cb_binance_edit(call: CallbackQuery, state: FSMContext, session: Async
     if not can:
         secs = int(remaining.total_seconds())
         d, h = secs // 86400, (secs % 86400) // 3600
-        await call.answer(t(lang, "payment_cooldown_binance", d=d, h=h), show_alert=True); return
+        await call.answer(f"⏳ Изменить можно через {d}д {h}ч.", show_alert=True); return
     await state.set_state(BinanceInput.waiting_value)
     await state.update_data(is_first_add=False)
     await call.message.edit_text(
-        t(lang, "binance_enter"), parse_mode="HTML",
+        "🟨 Введите новый <b>Binance ID</b>:",
+        parse_mode="HTML",
         reply_markup=cancel_keyboard(lang, back_cb="atm:binance"),
     )
     await call.answer()
@@ -491,31 +602,32 @@ async def fsm_binance(message: Message, state: FSMContext, session: AsyncSession
     lang = await _lang(session, message.from_user.id)
     val  = (message.text or "").strip()
     if not val:
-        await message.answer(t(lang, "binance_enter"), parse_mode="HTML"); return
+        await message.answer("🟨 Введите Binance ID:"); return
 
     data         = await state.get_data()
     is_first_add = data.get("is_first_add", True)
-    await state.clear()
 
     pd_result, err = await repository.upsert_payment_field(session, message.from_user.id, "binance_id", val)
     if err:
-        await message.answer(err, parse_mode="HTML")
-        return
-    pd = pd_result
+        await state.clear()
+        await message.answer(err); return
 
+    await state.clear()
     user = await repository.get_or_create_user(session, message.from_user.id, message.from_user.username)
+    pd   = await repository.get_payment_data(session, message.from_user.id)
     num  = f"▫️{user.user_number}" if user.user_number else ""
 
-    if is_first_add:
-        msg_key = "binance_added"
-    else:
+    if not is_first_add:
         await repository.set_payment_change_timestamp(session, message.from_user.id, "last_binance_change_at")
         await _notify_payment_change(bot, lang, user, "Binance ID", val)
-        msg_key = "binance_updated"
+        msg_key = "Binance ID обновлён"
+    else:
+        msg_key = "Binance ID сохранён"
 
     await message.answer(
-        t(lang, msg_key, val=val) + "\n\n" +
-        t(lang, "binance_header_filled", num=num, val=val),
+        f"✅ {msg_key}: <code>{val}</code>\n\n"
+        f"🟨 <b>BINANCE</b>\n\n{num}\n\n"
+        f"💛 Binance ID: <code>{pd.binance_id}</code>",
         parse_mode="HTML",
         reply_markup=binance_has_data_keyboard(lang, BINANCE_URL),
     )
@@ -524,9 +636,8 @@ async def fsm_binance(message: Message, state: FSMContext, session: AsyncSession
 @router.callback_query(F.data == "binance:delete")
 async def cb_binance_delete(call: CallbackQuery, session: AsyncSession) -> None:
     lang = await _lang(session, call.from_user.id)
-    await call.message.edit_text(
-        t(lang, "binance_delete_confirm"), reply_markup=binance_delete_confirm_keyboard(lang),
-    )
+    await call.message.edit_text("Удалить Binance ID?",
+                                  reply_markup=binance_delete_confirm_keyboard(lang))
     await call.answer()
 
 
@@ -538,8 +649,9 @@ async def cb_binance_delete_confirm(call: CallbackQuery, session: AsyncSession, 
     user = await repository.get_or_create_user(session, call.from_user.id, call.from_user.username)
     num  = f"▫️{user.user_number}" if user.user_number else ""
     await call.message.edit_text(
-        t(lang, "binance_deleted") + "\n\n" + t(lang, "binance_header_empty", num=num),
-        parse_mode="HTML", reply_markup=binance_no_data_keyboard(lang, BINANCE_URL),
+        f"🗑 Binance ID удалён.\n\n🟨 <b>BINANCE</b>\n\n{num}\n\n💛 Binance ID: —",
+        parse_mode="HTML",
+        reply_markup=binance_no_data_keyboard(lang, BINANCE_URL),
     )
     await call.answer()
     await _notify_payment_change(bot, lang, user, "Binance ID", "УДАЛЕНО")
@@ -553,6 +665,6 @@ async def cb_cancel_fsm(call: CallbackQuery, state: FSMContext, session: AsyncSe
     lang = await _lang(session, call.from_user.id)
     await call.message.edit_text(
         f"{BOT_GREETING}\n\n{t(lang, 'menu_text')}",
-        reply_markup=main_menu_keyboard_v11(lang),
+        reply_markup=main_menu_keyboard(lang),
     )
     await call.answer()

@@ -417,7 +417,7 @@ async def cmd_ban(message: Message, session: AsyncSession) -> None:
         return
     args = message.text.split()
     if len(args) < 2 or not args[1].lstrip("-").isdigit():
-        await message.answer("📖 /ban <telegram_id>")
+        await message.answer("📖 /ban [telegram_id]")
         return
     user = await repository.set_ban(session, int(args[1]), True)
     name = f"@{user.username}" if user and user.username else f"<code>{args[1]}</code>"
@@ -430,7 +430,7 @@ async def cmd_unban(message: Message, session: AsyncSession) -> None:
         return
     args = message.text.split()
     if len(args) < 2 or not args[1].lstrip("-").isdigit():
-        await message.answer("📖 /unban <telegram_id>")
+        await message.answer("📖 /unban [telegram_id]")
         return
     user = await repository.set_ban(session, int(args[1]), False)
     name = f"@{user.username}" if user and user.username else f"<code>{args[1]}</code>"
@@ -486,7 +486,7 @@ async def cmd_payment_view(message: Message, session: AsyncSession) -> None:
         return
     args = message.text.split()
     if len(args) < 2 or not args[1].lstrip("-").isdigit():
-        await message.answer("📖 /payment_view <telegram_id>")
+        await message.answer("📖 /payment_view [telegram_id]")
         return
     tid  = int(args[1])
     user = await repository.get_user(session, tid)
@@ -511,7 +511,7 @@ async def cmd_payment_set(message: Message, session: AsyncSession) -> None:
         return
     parts = message.text.split()
     if len(parts) < 3:
-        await message.answer("📖 /payment_set <telegram_id> binance=ID stake=username")
+        await message.answer("📖 /payment_set [telegram_id] binance=ID stake=username")
         return
     if not parts[1].lstrip("-").isdigit():
         await message.answer("⚠️ Неверный telegram_id.")
@@ -598,7 +598,7 @@ async def cmd_loot_ban(message: Message, session: AsyncSession) -> None:
         return
     args = message.text.split()
     if len(args) < 2 or not args[1].lstrip("-").isdigit():
-        await message.answer("📖 /loot <telegram_id>")
+        await message.answer("📖 /loot [telegram_id]")
         return
     user = await repository.set_loot_ban(session, int(args[1]), True)
     name = f"@{user.username}" if user and user.username else f"<code>{args[1]}</code>"

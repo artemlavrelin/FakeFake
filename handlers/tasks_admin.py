@@ -257,7 +257,7 @@ async def cmd_deletetask(message: Message, session: AsyncSession) -> None:
         return
     args = message.text.split()
     if len(args) < 2 or not args[1].isdigit():
-        await message.answer("📖 /deletetask <task_id>"); return
+        await message.answer("📖 /deletetask [task_id]"); return
     ok = await repository.delete_task(session, int(args[1]))
     await message.answer("✅ Задание деактивировано." if ok else "❓ Не найдено.")
 
@@ -268,7 +268,7 @@ async def cmd_taskinfo(message: Message, session: AsyncSession) -> None:
         return
     args = message.text.split()
     if len(args) < 2 or not args[1].isdigit():
-        await message.answer("📖 /taskinfo <task_id>"); return
+        await message.answer("📖 /taskinfo [task_id]"); return
 
     from database.models import ACCESS_LEVELS
     info = await repository.get_task_info(session, int(args[1]))

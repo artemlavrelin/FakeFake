@@ -317,7 +317,7 @@ async def cmd_afkoff(message: Message, session: AsyncSession) -> None:
         await message.answer("⛔ Нет доступа"); return
     args = message.text.split()
     if len(args) < 2:
-        await message.answer("📖 /afkoff <id> или @username"); return
+        await message.answer("📖 /afkoff \[id] или @username"); return
     target = args[1]
     if target.startswith("@"):
         user = await repository.get_user_by_username(session, target)

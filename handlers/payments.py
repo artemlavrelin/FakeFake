@@ -6,7 +6,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import ADMIN_IDS, MODER_GROUP_ID
+from config import ADMIN_IDS, MIN_WITHDRAWAL, MODER_GROUP_ID
 from database import repository
 from states.contest import WithdrawFSM
 from utils.logger import get_logger
@@ -58,8 +58,8 @@ async def cb_withdraw(call: CallbackQuery, state: FSMContext, session: AsyncSess
         await call.answer(f"⏳ Следующий вывод через {h}ч {m}м.", show_alert=True); return
 
     balance = await repository.get_or_create_balance(session, call.from_user.id)
-    if balance.balance <= 0:
-        await call.answer("💰 Недостаточно средств.", show_alert=True); return
+    if balance.balance < MIN_WITHDRAWAL:
+        await call.answer(f"Минимальный вывод: ${MIN_WITHDRAWAL:.2f}. Ваш баланс: ${balance.balance:.2f}", show_alert=True); return
 
     await state.set_state(WithdrawFSM.waiting_amount)
     b = InlineKeyboardBuilder()
