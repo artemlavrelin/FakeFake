@@ -10,15 +10,6 @@ class Base(DeclarativeBase):
     pass
 
 
-# ─── Profile status constants ─────────────────────────────────────────────────
-# "new"      = ….. (default, no review yet)
-# "pending"  = ⬜️ на рассмотрении
-# "verified" = 🟩 верифицирован
-# "fake"     = 🟥 фейк / мёртвый
-# "banned"   = ⬛️ заблокирован
-# "girl"     = 🟧 девушка + верифицирована
-# "guy"      = 🟫 парень + верифицирован
-
 STATUS_ICONS = {
     "new":      "…..",
     "pending":  "⬜️",
@@ -28,16 +19,6 @@ STATUS_ICONS = {
     "girl":     "🟧",
     "guy":      "🟫",
 }
-
-# Task access_level values
-# "all"        - everything
-# "new"        - only new/unverified
-# "pending"    - only pending
-# "verified"   - only verified (🟩 + 🟧 + 🟫)
-# "no_fake"    - exclude fake
-# "girl_ver"   - 🟧 girls + 🟩 verified
-# "guy_ver"    - 🟫 guys + 🟩 verified
-ACCESS_LEVELS = ["all", "new", "pending", "verified", "no_fake", "girl_ver", "guy_ver"]
 
 
 class User(Base):
@@ -73,7 +54,8 @@ class UserProfile(Base):
     threads     = Column(String(255), nullable=True)
     facebook    = Column(String(512), nullable=True)
     twitter     = Column(String(255), nullable=True)
-    # status: new | pending | verified | fake | banned | girl | guy
+    tiktok      = Column(String(255), nullable=True)
+    tiktok      = Column(String(255), nullable=True)   # NEW field
     status      = Column(String(20), default="new", nullable=False)
     bonus_paid  = Column(Boolean, default=False, nullable=False)
     created_at  = Column(DateTime, default=datetime.utcnow)
@@ -112,7 +94,6 @@ class Task(Base):
     action_type  = Column(String(100), nullable=False)
     description  = Column(Text, nullable=True)
     reward       = Column(Float, nullable=False, default=0.20)
-    # access_level: all | new | pending | verified | no_fake | girl_ver | guy_ver
     access_level = Column(String(30), default="all", nullable=False)
     is_active    = Column(Boolean, default=True, nullable=False)
     admin_id     = Column(BigInteger, nullable=False)
@@ -146,14 +127,11 @@ class TaskLog(Base):
 
 
 class PaymentData(Base):
-    """
-    Stake ID and Binance ID are GLOBALLY UNIQUE across all users.
-    DB enforces uniqueness via UniqueConstraint.
-    """
+    """Globally unique Stake ID and Binance ID."""
     __tablename__ = "payment_data"
     __table_args__ = (
         UniqueConstraint("stake_user", name="uq_payment_stake_user"),
-        UniqueConstraint("binance_id", name="uq_payment_binance_id"),
+        UniqueConstraint("binance_id",  name="uq_payment_binance_id"),
     )
     id          = Column(Integer, primary_key=True)
     telegram_id = Column(BigInteger, ForeignKey("users.telegram_id"), unique=True, nullable=False)

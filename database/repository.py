@@ -193,19 +193,22 @@ async def get_or_create_profile(session: AsyncSession, telegram_id: int) -> User
 
 
 async def save_profile(session: AsyncSession, telegram_id: int,
-                        instagram: str, threads: str, facebook: str, twitter: str) -> UserProfile:
+                        instagram: str, threads: str, facebook: str,
+                        twitter: str, tiktok: str = "") -> UserProfile:
     p = await get_or_create_profile(session, telegram_id)
     p.instagram  = instagram or None
     p.threads    = threads or None
     p.facebook   = facebook or None
     p.twitter    = twitter or None
+    p.tiktok     = tiktok or None
     p.status     = "pending"
     p.updated_at = datetime.utcnow()
     await session.commit()
     await session.refresh(p)
 
     if not p.bonus_paid:
-        filled = sum(1 for v in [instagram, threads, facebook, twitter] if v and v.strip())
+        # 5 social fields × $0.10 each
+        filled = sum(1 for v in [instagram, threads, facebook, twitter, tiktok] if v and v.strip())
         bonus  = round(filled * 0.10, 2)
         if bonus > 0:
             p.bonus_paid = True
@@ -792,3 +795,34 @@ async def draw_winners(session: AsyncSession, contest: Contest) -> tuple[list[Wi
     )
     winners = list(result.scalars().all())
     return winners, total
+
+
+# ─── Profile v2 (with tiktok + 5-field bonus) ────────────────────────────────
+
+async def save_profile_v2(session: AsyncSession, telegram_id: int,
+                            instagram: str, threads: str, facebook: str,
+                            twitter: str, tiktok: str) -> UserProfile:
+    """Save profile with 5 social fields. Bonus: $0.10 per field, max $0.50."""
+    p = await get_or_create_profile(session, telegram_id)
+    p.instagram  = instagram  or None
+    p.threads    = threads    or None
+    p.facebook   = facebook   or None
+    p.twitter    = twitter    or None
+    if hasattr(p, "tiktok"):
+        p.tiktok = tiktok or None
+    p.status     = "pending"
+    p.updated_at = datetime.utcnow()
+    await session.commit()
+    await session.refresh(p)
+
+    if not p.bonus_paid:
+        tiktok_val = getattr(p, "tiktok", None)
+        filled = sum(1 for v in [instagram, threads, facebook, twitter, tiktok] if v and v.strip())
+        bonus  = round(filled * 0.10, 2)
+        if bonus > 0:
+            p.bonus_paid = True
+            await session.commit()
+            await add_balance(session, telegram_id, bonus)
+            logger.info("Social bonus | telegram_id=%s | filled=%s | bonus=$%s",
+                        telegram_id, filled, bonus)
+    return p
