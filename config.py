@@ -43,6 +43,7 @@ USE_WEBHOOK: bool = bool(WEBHOOK_HOST)
 REVIEW_COOLDOWN_HOURS: int        = int(os.getenv("REVIEW_COOLDOWN_HOURS", "12"))
 LOOT_COOLDOWN_HOURS: int          = int(os.getenv("LOOT_COOLDOWN_HOURS", "24"))
 PAYMENT_CHANGE_COOLDOWN_DAYS: int = int(os.getenv("PAYMENT_CHANGE_COOLDOWN_DAYS", "7"))
+MIN_WITHDRAWAL: float             = float(os.getenv("MIN_WITHDRAWAL", "3.0"))
 
 # Slot system
 SLOT_SPINS_MIN: int = int(os.getenv("SLOT_SPINS_MIN", "69"))
